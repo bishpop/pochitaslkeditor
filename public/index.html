@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="description" content="A privacy-first, browser-based editor for SLK song lists. All processing happens in your browser.">
+<title>Pochita SLK Editor v1.2.2</title>
+<meta name="theme-color" content="#202734">
+<link rel="icon" href="./favicon.svg" type="image/svg+xml">
+<link rel="icon" href="./favicon.ico" sizes="any">
+<link rel="icon" href="./favicon-16x16.png" type="image/png" sizes="16x16">
+<link rel="icon" href="./favicon-32x32.png" type="image/png" sizes="32x32">
+<link rel="apple-touch-icon" href="./apple-touch-icon.png">
+<link rel="manifest" href="./site.webmanifest">
+<script src="./theme-init.js"></script>
+<link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+<div class="app" id="app">
+  <header class="topbar">
+    <div class="brand">
+      <div class="brand-mark"><img src="./pochita-mascot.png" width="40" height="40" alt="Pochita mascot" decoding="async"></div>
+      <div><div class="brand-name">Pochita <span class="brand-product">SLK Editor</span></div><div class="brand-sub">Structured list workspace</div></div>
+    </div>
+    <div class="topbar-right">
+      <button class="theme-toggle" id="themeToggle" type="button" aria-label="Enable dark theme" aria-pressed="false" title="Enable dark theme">
+        <svg class="theme-icon theme-icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M20.2 15.2A8.7 8.7 0 0 1 8.8 3.8a8.8 8.8 0 1 0 11.4 11.4Z"/></svg>
+        <svg class="theme-icon theme-icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M4.93 4.93l1.42 1.42m11.3 11.3 1.42 1.42M2 12h2m16 0h2M4.93 19.07l1.42-1.42m11.3-11.3 1.42-1.42"/></svg>
+        <span id="themeToggleLabel">Dark theme</span>
+      </button>
+      <span class="local-pill"><span class="local-dot"></span> Browser-only · Files stay on your device</span><span>v1.2.2</span>
+    </div>
+  </header>
+  <div class="appbody">
+    <aside class="sidebar">
+      <div class="sidebar-head"><div class="eyebrow">Project files</div><div class="side-title-row"><div class="side-title">SLK workspace</div><span class="count-pill" id="fileCount">0 files</span></div></div>
+      <div class="sidebar-files" id="fileList"><div class="loading"><div class="loading-inner"><div class="loading-mark">P</div>Import one or more SLK files to begin…</div></div></div>
+      <div class="sidebar-actions"><button class="btn btn-primary import-files-btn" id="addFilesBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 5v14M5 12h14"/></svg>Import SLK files</button><button class="btn btn-quiet btn-sm" id="resetDemoBtn" title="Remove all imported files from this workspace">Clear workspace</button></div>
+    </aside>
+    <main class="main">
+      <div class="main-head">
+        <div class="workspace-heading"><div class="eyebrow">Data workspace / <span id="headerFileKind">SLK file</span></div><h1 class="page-title" id="pageTitle">Pochita SLK Editor</h1><div class="page-subtitle" id="pageSubtitle"><span>Load one or more SLK files to get started.</span></div></div>
+        <div class="head-actions">
+          <button class="btn btn-primary" id="newEntryBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 5v14M5 12h14"/></svg>New entry</button>
+          <button class="btn btn-dark" id="syncBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20 7v5h-5M4 17v-5h5"/><path d="M5.5 9a7 7 0 0 1 11.7-2L20 9M4 15l2.8 2a7 7 0 0 0 11.7-2"/></svg>Apply selected fields</button>
+          <button class="btn" id="exportCurrentBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3v12m0 0 4-4m-4 4-4-4"/><path d="M5 15v4.5A1.5 1.5 0 0 0 6.5 21h11a1.5 1.5 0 0 0 1.5-1.5V15"/></svg>Export current</button>
+          <button class="btn" id="exportZipBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7.5h16v13H4zM8 7.5V4h8v3.5M9 11h6M9 14h6M9 17h3"/></svg>Export all ZIP</button>
+        </div>
+      </div>
+      <div class="tabs-wrap"><div class="tabs" id="tabs"></div></div>
+      <div class="workspace-toolbar">
+        <div class="toolbar-left"><label class="searchbox"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.8"/><path d="m16 16 4.5 4.5"/></svg><input type="search" id="searchInput" placeholder="Search artist, title, file name…" autocomplete="off" aria-label="Search entries"></label><span class="results-label" id="resultCount">—</span><label class="compact-select" for="rowLimit"><span>View</span><select id="rowLimit" aria-label="Rows shown per page"><option value="25">25 / page</option><option value="50">50 / page</option><option value="75">75 / page</option><option value="100" selected>100 / page</option><option value="all">All entries · scroll</option></select></label></div>
+        <div class="toolbar-right"><label class="split-switch"><input type="checkbox" id="splitToggle"><span>Split view</span></label><div class="split-chooser" id="splitChooser"></div></div>
+      </div>
+      <section class="editing-toolbar" aria-label="Editing and selection actions">
+        <div class="bulk-actions">
+          <button type="button" class="btn btn-sm" id="resetNewFlagsBtn" title="Set NEW to 0 for every loaded file where NEW currently equals 1">Set NEW = 0 · All files</button>
+          <button type="button" class="btn btn-sm" id="toggleSelectedNewBtn" disabled>Toggle NEW · <span id="selectedCountNew">0 selected</span></button>
+          <button type="button" class="btn btn-sm" id="toggleSelectedUseBtn" disabled>Toggle USE · selected</button>
+          <span class="selection-hint" id="selectionHint">Select rows by dragging across them, or use Ctrl / Shift.</span>
+        </div>
+        <div class="edit-settings">
+          <label class="setting-check"><input type="checkbox" id="f2Enabled" checked><span>F2 edits selected cell</span></label>
+          <label class="setting-check"><input type="checkbox" id="dragSelectEnabled" checked><span>Mouse-hold row selection</span></label>
+        </div>
+      </section>
+      <section class="sync-fields-panel" id="syncFieldsPanel">
+        <div class="sync-fields-top"><div class="sync-fields-copy"><div class="eyebrow">Selective sync</div><strong>Choose which Root values may update target files</strong><p>Only checked fields are changed on matching rows. Nothing else in a target row is overwritten.</p></div><div class="sync-fields-actions"><button class="btn btn-sm" id="selectAllSyncFields" type="button">Select common</button><button class="btn btn-sm btn-quiet" id="clearSyncFields" type="button">Clear</button></div></div>
+        <div class="sync-fields-grid" id="syncFieldList"><span class="sync-empty">Choose a Root file to configure field-level sync.</span></div>
+        <div class="sync-hint"><span class="sync-hint-icon">i</span><span>Matching uses Singer, Title and File name as the row key. When a new target row is created, those key fields are always filled; Level and format-specific fields remain target-specific. Red rows have <code>Use = 0</code>.</span></div>
+      </section>
+      <section class="sheet-area"><div class="sheet-grid" id="sheetGrid"></div></section>
+      <footer class="statusbar"><div class="status-left"><span class="status-indicator"></span><span id="statusText">Ready</span></div><div id="statusRight">Changes stay in this local session until exported.</div></footer>
+    </main>
+  </div>
+</div>
+<input class="file-picker" id="filePicker" type="file" accept=".slk,.txt,application/octet-stream" multiple>
+<div class="modal-backdrop" id="entryModal" role="dialog" aria-modal="true" aria-labelledby="modalTitle" aria-describedby="modalCopy">
+  <form class="modal" id="entryForm">
+    <div class="modal-head"><div><div class="eyebrow" id="modalEyebrow">Root entry</div><h2 class="modal-title" id="modalTitle">Create new entries</h2><p class="modal-copy" id="modalCopy">Entries are appended in order to the end of Root and enabled target files.</p></div><button type="button" class="modal-close" id="modalClose" aria-label="Close entry editor">×</button></div>
+    <div class="modal-body">
+      <section class="tbm-config" aria-label="TBM filename settings">
+        <div class="tbm-config-copy"><div class="form-section-title">Automatic TBM filenames</div><p class="modal-copy">Choose a prefix. New filenames start at the next number found in Root (for example, <code>g1001.tbm</code> → <code>g1002.tbm</code>). You can edit each generated filename in its entry card.</p></div>
+        <div class="tbm-config-fields"><div class="field"><label for="tbmPrefixSelect">TBM prefix</label><select id="tbmPrefixSelect"></select></div><div class="field" id="customPrefixField" hidden><label for="tbmCustomPrefix">Custom prefix</label><input id="tbmCustomPrefix" type="text" value="g" maxlength="32" autocomplete="off"></div></div>
+      </section>
+      <div class="entry-list-head"><div><div class="form-section-title" id="formSectionTitle">New entries</div><p class="modal-copy">Each new entry starts from the entry above it. The first starts from the last Root entry. NEW and USE are always set to 1; Offset defaults to 0.7.</p></div><span class="entry-count" id="entryCount">1 entry</span></div>
+      <div id="entryList" class="entry-list"></div>
+      <button type="button" class="btn add-another-btn" id="addAnotherEntry"><span aria-hidden="true">＋</span> Add another entry</button>
+    </div>
+    <div class="modal-foot"><div class="modal-foot-note">Level has a minimum of 0 and no upper limit. Entries are appended to the end of each SLK. Export to save the changes.</div><div class="modal-foot-actions"><button type="button" class="btn" id="cancelEntryBtn">Cancel</button><button type="submit" class="btn btn-primary" id="saveEntriesBtn">Add entry</button></div></div>
+  </form>
+</div>
+<div class="toast-wrap" id="toastWrap"></div>
+<script src="./vendor/jszip.min.js" defer></script>
+<script src="./vendor/cp949.js" defer></script>
+<script src="./app.js" defer></script>
+<!-- Application logic is kept in the external app.js file for a static, GitHub Pages-friendly site. -->
+
+</body>
+</html>

@@ -1,0 +1,8 @@
+{
+  "$schema": "https://developers.cloudflare.com/workers/wrangler/config-schema.json",
+  "name": "pochitaslkeditor",
+  "compatibility_date": "2026-10-24",
+  "assets": {
+    "directory": "./public"
+  }
+}

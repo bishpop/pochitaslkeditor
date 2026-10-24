@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024" role="img" aria-labelledby="title desc">
+  <title id="title">Pochita SLK Editor mascot</title>
+  <desc id="desc">An original cute orange puppy mascot with mint and navy accents.</desc>
+  <!-- Transparent canvas; the rounded tile makes the mark legible as a favicon. -->
+  <rect x="36" y="36" width="952" height="952" rx="206" fill="#202734" stroke="#36415A" stroke-width="18"/>
+  <circle cx="515" cy="490" r="330" fill="#E0F8C7"/>
+  <circle cx="515" cy="490" r="290" fill="#B7D894"/>
+  <!-- small sparkles -->
+  <path d="M760 180 L779 224 L823 243 L779 262 L760 306 L741 262 L697 243 L741 224 Z" fill="#E0F8C7"/>
+  <path d="M212 600 L225 630 L255 643 L225 656 L212 686 L199 656 L169 643 L199 630 Z" fill="#E0F8C7"/>
+  <!-- a little file card tucked behind the mascot -->
+  <g transform="rotate(8 706 572)">
+    <path d="M650 370 H770 L830 430 V665 Q830 684 811 684 H650 Q632 684 632 665 V389 Q632 370 650 370 Z" fill="#F4F7EF" stroke="#202734" stroke-width="16" stroke-linejoin="round"/>
+    <path d="M770 370 V430 H830" fill="#B7D894" stroke="#202734" stroke-width="14" stroke-linejoin="round"/>
+    <path d="M672 490 H780 M672 535 H780 M672 580 H754" fill="none" stroke="#36415A" stroke-width="17" stroke-linecap="round"/>
+  </g>
+  <!-- curled tail -->
+  <path d="M688 675 C816 678 840 585 785 554 C742 529 713 571 746 596 C764 610 788 595 780 581" fill="none" stroke="#202734" stroke-width="54" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M688 675 C816 678 840 585 785 554 C742 529 713 571 746 596 C764 610 788 595 780 581" fill="none" stroke="#F28A54" stroke-width="34" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- floppy ears -->
+  <path d="M345 389 C287 315 222 344 226 420 C229 478 286 505 349 454 Z" fill="#D96542" stroke="#202734" stroke-width="18" stroke-linejoin="round"/>
+  <path d="M670 388 C726 329 784 358 773 420 C764 466 718 479 675 447 Z" fill="#D96542" stroke="#202734" stroke-width="18" stroke-linejoin="round"/>
+  <path d="M276 382 C263 367 248 379 253 407 C258 431 275 440 292 437" fill="none" stroke="#F8AE83" stroke-width="12" stroke-linecap="round"/>
+  <path d="M720 391 C739 377 753 389 744 413" fill="none" stroke="#F8AE83" stroke-width="12" stroke-linecap="round"/>
+  <!-- body -->
+  <path d="M310 690 C301 617 329 557 385 536 C424 522 474 543 504 566 C546 534 612 529 662 556 C717 587 737 655 715 720 C694 786 633 827 527 827 C414 827 338 785 310 690 Z" fill="#F28A54" stroke="#202734" stroke-width="20" stroke-linejoin="round"/>
+  <!-- paws -->
+  <path d="M370 726 C353 759 354 809 385 825 C413 838 445 821 448 790 L447 753 Z" fill="#F7A06F" stroke="#202734" stroke-width="16" stroke-linejoin="round"/>
+  <path d="M580 752 C568 789 580 823 610 829 C640 836 660 815 655 783 L644 747 Z" fill="#F7A06F" stroke="#202734" stroke-width="16" stroke-linejoin="round"/>
+  <!-- head -->
+  <path d="M294 488 C294 387 383 319 502 318 C628 316 716 386 716 493 C716 594 635 661 506 661 C377 661 294 590 294 488 Z" fill="#FF9A61" stroke="#202734" stroke-width="20" stroke-linejoin="round"/>
+  <!-- tiny leaf-like tuft, an original mascot detail -->
+  <path d="M484 324 C472 284 505 253 547 257 C541 294 519 315 484 324 Z" fill="#B7D894" stroke="#202734" stroke-width="14" stroke-linejoin="round"/>
+  <path d="M489 316 L526 274" fill="none" stroke="#36415A" stroke-width="8" stroke-linecap="round"/>
+  <!-- eyes -->
+  <ellipse cx="420" cy="462" rx="29" ry="37" fill="#202734"/>
+  <circle cx="430" cy="450" r="9" fill="#FFFFFF"/>
+  <ellipse cx="590" cy="462" rx="29" ry="37" fill="#202734"/>
+  <circle cx="600" cy="450" r="9" fill="#FFFFFF"/>
+  <!-- blush -->
+  <ellipse cx="361" cy="518" rx="28" ry="13" fill="#E97567" opacity="0.72"/>
+  <ellipse cx="647" cy="518" rx="28" ry="13" fill="#E97567" opacity="0.72"/>
+  <!-- muzzle and nose -->
+  <path d="M449 505 C462 484 484 478 506 482 C531 476 555 488 567 508 C584 539 557 567 510 567 C463 567 433 539 449 505 Z" fill="#FFF0D9" stroke="#202734" stroke-width="12" stroke-linejoin="round"/>
+  <path d="M493 506 Q510 493 527 506 Q526 526 510 526 Q494 526 493 506 Z" fill="#202734"/>
+  <path d="M510 526 C509 542 493 544 486 535 M510 526 C511 542 527 544 534 535" fill="none" stroke="#202734" stroke-width="9" stroke-linecap="round"/>
+  <!-- collar and tag -->
+  <path d="M438 647 Q509 672 581 646 L597 682 Q509 716 421 682 Z" fill="#36415A" stroke="#202734" stroke-width="12" stroke-linejoin="round"/>
+  <path d="M509 682 L537 704 L509 739 L481 704 Z" fill="#E0F8C7" stroke="#202734" stroke-width="10" stroke-linejoin="round"/>
+  <circle cx="509" cy="701" r="5" fill="#36415A"/>
+</svg>

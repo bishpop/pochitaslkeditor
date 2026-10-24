@@ -1,6 +1,9 @@
 const $ = (s, root=document) => root.querySelector(s);
 const $$ = (s, root=document) => [...root.querySelectorAll(s)];
 let docs = [], activeId = null, rootId = null, splitMode = false, viewIds = [], query = '', pageById = {}, selectedRowById = {}, selectedRowsById = {}, selectedCellById = {}, selectionAnchorById = {}, dirty = new Set();
+let coverageDismissed = false;
+let undoStack = [], redoStack = [];
+let compactMode = document.documentElement.dataset.density === 'compact';
 let syncFieldKeys = new Set();
 let viewMode = 'paged', pageSize = 100, f2Enabled = true, dragSelectEnabled = true, dragSelection = null;
 let entryDrafts = [], entryTargetLevels = [], selectedTbmPrefix = 'g';
@@ -8,6 +11,7 @@ const SYNC_FIELD_CANDIDATES = [
  {key:'singer', label:'Singer / Artist'}, {key:'title', label:'Title'}, {key:'filename', label:'File name'},
  {key:'bpm', label:'BPM'}, {key:'offset', label:'Offset'}, {key:'new', label:'New'}, {key:'use', label:'Use'}
 ];
+const DEFAULT_SYNC_FIELD_KEYS = new Set(['singer','title','filename','bpm','offset']);
 const CELL_RE = /^C;X(\d+);Y(\d+);K(.*)$/;
 const iconSvg = {
  file:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M7 3.5h7l4.5 4.5v12A1.5 1.5 0 0 1 17 21.5H7A1.5 1.5 0 0 1 5.5 20V5A1.5 1.5 0 0 1 7 3.5Z"/><path d="M14 4v4h4M8.5 12h7M8.5 15.5h7"/></svg>',
@@ -127,6 +131,9 @@ function newEntrySeed(doc,filename){
  const row=[...source,...Array(Math.max(0,doc.headers.length-source.length)).fill('')].slice(0,doc.headers.length);
  const offsetIndex=findFieldIdx(doc,'offset'),newIndex=findFieldIdx(doc,'new'),useIndex=findFieldIdx(doc,'use'),filenameIndex=findFieldIdx(doc,'filename');
  if(offsetIndex>=0)row[offsetIndex]='0.7';
+ const singerIndex=findFieldIdx(doc,'singer'),titleIndex=findFieldIdx(doc,'title');
+ if(singerIndex>=0)row[singerIndex]='';
+ if(titleIndex>=0)row[titleIndex]='';
  if(newIndex>=0)row[newIndex]='1';
  if(useIndex>=0)row[useIndex]='1';
  if(filenameIndex>=0&&filename)row[filenameIndex]=filename;
@@ -177,15 +184,16 @@ function makeTargetRow(sourceDoc,sourceRow,targetDoc,targetLevelOverride=null){
  const offsetIdx=findFieldIdx(targetDoc,'offset');if(offsetIdx>=0&&!syncFieldKeys.has('offset'))out[offsetIdx]='0.7';else if(offsetIdx>=0&&String(out[offsetIdx]??'').trim()==='')out[offsetIdx]='0.7';
  return out;
 }
-function upsertToTarget(sourceDoc,sourceRow,targetDoc,targetLevelOverride=null){
+function upsertToTarget(sourceDoc,sourceRow,targetDoc,targetLevelOverride=null,options={}){
  const ident=identity(sourceDoc,sourceRow);
- const levelIdx=findFieldIdx(targetDoc,'level');
- const desiredLevel=levelIdx>=0?String(targetLevelOverride??targetDoc.targetLevel??'3'):null;
- let found=-1;
- for(let i=0;i<targetDoc.records.length;i++){
-  if(identity(targetDoc,targetDoc.records[i])!==ident)continue;
-  if(desiredLevel!==null && String(targetDoc.records[i][levelIdx])!==desiredLevel)continue;
-  found=i;break;
+ // Level is target-specific metadata: it must not prevent an existing entry from matching.
+ let found=targetDoc.records.findIndex(row=>identity(targetDoc,row)===ident);
+ // When applying a Root row, recover a uniquely identifiable same-song row even if its filename is wrong.
+ // This lets the user repair filename mismatches without creating a duplicate entry.
+ if(found<0&&options.matchByTrack){
+  const key=trackIdentity(sourceDoc,sourceRow),matches=[];
+  if(key!=='\u001f')for(let i=0;i<targetDoc.records.length;i++)if(trackIdentity(targetDoc,targetDoc.records[i])===key)matches.push(i);
+  if(matches.length===1)found=matches[0];
  }
  if(found>=0){
   const current=targetDoc.records[found].slice();let changed=false;
@@ -199,6 +207,48 @@ function upsertToTarget(sourceDoc,sourceRow,targetDoc,targetLevelOverride=null){
  targetDoc.records.push(makeTargetRow(sourceDoc,sourceRow,targetDoc,targetLevelOverride));targetDoc.rowCount=targetDoc.records.length;dirty.add(targetDoc.id);return 'added';
 }
 function markDirty(d){dirty.add(d.id);d.rowCount=d.records.length;}
+function beginUndo(label, affectedDocs){
+ const snapshots=[...new Map((affectedDocs||[]).filter(Boolean).map(d=>[d.id,d])).values()].map(d=>({id:d.id,before:d.records.map(row=>row.slice())}));
+ return {label,snapshots};
+}
+function rowsEqual(a,b){if(a===null||b===null)return a===b;if(!Array.isArray(a)||!Array.isArray(b)||a.length!==b.length)return false;return a.every((v,i)=>String(v??'')===String(b[i]??''));}
+function commitUndo(transaction){
+ if(!transaction)return;
+ const patches=[];
+ for(const snapshot of transaction.snapshots){
+  const d=docById(snapshot.id);if(!d)continue;
+  const max=Math.max(snapshot.before.length,d.records.length);
+  for(let row=0;row<max;row++){
+   const before=row<snapshot.before.length?snapshot.before[row]:null;
+   const after=row<d.records.length?d.records[row]:null;
+   if(!rowsEqual(before,after))patches.push({id:d.id,row,before:before?before.slice():null,after:after?after.slice():null});
+  }
+ }
+ if(!patches.length)return;
+ undoStack.push({label:transaction.label,patches});if(undoStack.length>40)undoStack.shift();redoStack=[];
+}
+function applyHistory(sourceStack,targetStack,verb){
+ const item=sourceStack.pop();if(!item){toast(verb==='Undo'?'Nothing to undo.':'Nothing to redo.');return;}
+ const touched=new Set(), forward=verb==='Redo';
+ const removals=item.patches.filter(p=>forward?p.after===null:p.before===null).sort((a,b)=>a.id.localeCompare(b.id)||b.row-a.row);
+ const writes=item.patches.filter(p=>p.before!==null&&p.after!==null);
+ // Remove appended rows from bottom to top so the remaining row indexes stay stable.
+ for(const patch of removals){const d=docById(patch.id);if(!d)continue;d.records.splice(patch.row,1);touched.add(d.id);}
+ // Redoing appended rows requires insertion from top to bottom; ordinary cell/row patches are assignments.
+ const insertions=item.patches.filter(p=>forward?p.before===null&&p.after!==null:p.after===null&&p.before!==null).sort((a,b)=>a.id.localeCompare(b.id)||a.row-b.row);
+ for(const patch of insertions){const d=docById(patch.id);if(!d)continue;const value=forward?patch.after:patch.before;if(!value)continue;d.records.splice(Math.min(patch.row,d.records.length),0,value.slice());touched.add(d.id);}
+ for(const patch of writes){
+  const d=docById(patch.id);if(!d||patch.row<0)continue;
+  const value=forward?patch.after:patch.before;
+  if(patch.row<d.records.length)d.records[patch.row]=value.slice();
+  touched.add(d.id);
+ }
+ if(!touched.size){toast('The files for this history action are no longer loaded.','error');return;}
+ for(const id of touched){const d=docById(id);if(d)markDirty(d);}
+ targetStack.push(item);renderAll();toast(`${verb==='Undo'?'Undid':'Redid'}: ${item.label}.`);
+}
+function undoEdit(){applyHistory(undoStack,redoStack,'Undo');}
+function redoEdit(){applyHistory(redoStack,undoStack,'Redo');}
 function makeId(){return (globalThis.crypto&&crypto.randomUUID)?crypto.randomUUID():`doc_${Date.now()}_${Math.random().toString(16).slice(2)}`;}
 function decodeSlkBytes(raw){
  const bytes=raw instanceof Uint8Array?raw:new Uint8Array(raw);
@@ -253,14 +303,7 @@ function syncFieldOptions(){
  const targets=docs.filter(d=>d.id!==rootId);
  return SYNC_FIELD_CANDIDATES.filter(f=>findFieldIdx(root,f.key)>=0&&targets.some(d=>findFieldIdx(d,f.key)>=0));
 }
-function renderSyncFields(){
- const panel=$('#syncFieldsPanel'),host=$('#syncFieldList');if(!rootId||!docById(rootId)){panel.classList.add('sync-hidden');host.innerHTML='<span class="sync-empty">Choose a Root file to configure field-level sync.</span>';return;}
- panel.classList.remove('sync-hidden');const fields=syncFieldOptions();
- if(!fields.length){host.innerHTML='<span class="sync-empty">No common fields found. Import a target SLK to configure selective sync.</span>';return;}
- host.innerHTML=fields.map(f=>`<label class="sync-field"><input type="checkbox" data-sync-field="${f.key}" ${syncFieldKeys.has(f.key)?'checked':''}><span>${esc(f.label)}</span></label>`).join('');
- $$('[data-sync-field]',host).forEach(input=>input.addEventListener('change',()=>{input.checked?syncFieldKeys.add(input.dataset.syncField):syncFieldKeys.delete(input.dataset.syncField);$('#clearSyncFields').disabled=syncFieldKeys.size===0;updateHead();}));
- $('#selectAllSyncFields').disabled=!fields.length;$('#clearSyncFields').disabled=syncFieldKeys.size===0;
-}
+function defaultSyncFieldKeys(){return new Set(syncFieldOptions().filter(f=>DEFAULT_SYNC_FIELD_KEYS.has(f.key)).map(f=>f.key));}
 function toast(message,kind='ok'){
  const node=document.createElement('div');node.className='toast';node.innerHTML=`<span class="toast-mark">${kind==='error'?'!':'✓'}</span><span>${esc(message)}</span>`;$('#toastWrap').append(node);setTimeout(()=>node.remove(),4800);
 }
@@ -274,7 +317,7 @@ function renderSidebar(){
     <div class="file-top">
       <button type="button" class="root-pick ${root?'selected':''}" data-root="${d.id}" title="Make this file the single Root"><span class="root-box">✓</span><span>Root</span></button>
       <button type="button" class="file-open" data-open="${d.id}" title="Open ${esc(d.filename)}">${esc(baseNoExt(d.exportName||d.filename))}</button>
-      <label class="target-check" title="Include this file when applying selected Root fields"><input type="checkbox" data-target="${d.id}" ${d.syncTarget?'checked':''} ${root?'disabled':''}><span>Target</span></label>
+      <label class="target-check" title="Receive the selected Root row when it is applied to targets"><input type="checkbox" data-target="${d.id}" ${d.syncTarget?'checked':''} ${root?'disabled':''}><span>Target</span></label>
     </div>
     <div class="file-meta"><span>${esc(labelForKind(kind))}</span><span>${d.records.length.toLocaleString('en-US')} rows · ${d.headers.length} cols <button type="button" class="file-remove" data-remove="${d.id}" title="Remove from workspace only">×</button></span></div>
     <div class="file-bottom"><span class="file-tag">${root?'ROOT SOURCE':d.syncTarget?'TARGET ENABLED':'AVAILABLE'}</span>${root?'':`<label class="level-editor">Level <input type="number" min="0" step="1" data-level="${d.id}" value="${esc(d.targetLevel??'3')}" ${findFieldIdx(d,'level')<0?'disabled title="This file has no Level column"':''}></label>`}</div>
@@ -294,14 +337,16 @@ function removeDoc(id){
  if(rootId===id){const next=docs.find(x=>kindOf(x)==='root')||[...docs].sort((a,b)=>b.records.length-a.records.length)[0];rootId=next?.id||null;syncFieldKeys.clear();docs.forEach(x=>{x.syncTarget=x.id!==rootId;});}
  if(rootId){const root=docById(rootId);if(root)root.syncTarget=false;}
  if(!viewIds.length&&docs.length)viewIds=docs.slice(0,Math.min(3,docs.length)).map(x=>x.id);
+ syncFieldKeys=defaultSyncFieldKeys();
  renderAll();toast(`${d.filename} removed from workspace.`);
 }
 function setRoot(id){
  if(!docById(id))return;
- const oldRoot=rootId;rootId=id;if(oldRoot!==id)syncFieldKeys.clear();
+ const oldRoot=rootId;rootId=id;if(oldRoot!==id)coverageDismissed=false;
  docs.forEach(d=>{if(d.id===rootId){d.syncTarget=false;}else if(d.id===oldRoot){d.syncTarget=true;}});
  if(!viewIds.includes(rootId)){viewIds=[rootId,...viewIds.filter(x=>x!==rootId)].slice(0,3);}
  if(!activeId)activeId=rootId;
+ syncFieldKeys=defaultSyncFieldKeys();
  renderAll();toast(`${baseNoExt(docById(id).exportName)} ist jetzt die Root-Datei.`);
 }
 function renderTabs(){
@@ -343,7 +388,7 @@ function updateBulkToolbar(){
  $('#toggleSelectedNewBtn').disabled=!d||!n||findFieldIdx(d,'new')<0;
  $('#toggleSelectedUseBtn').disabled=!d||!n||findFieldIdx(d,'use')<0;
  $('#selectedCountNew').textContent=`${n} selected`;
- $('#selectionHint').textContent=d?(n?`${n} row${n===1?'':'s'} selected in ${baseNoExt(d.exportName||d.filename)}. Drag to extend; Ctrl-click or Shift-click also works.`:'Select rows with the mouse. Hold and drag to select a range.'):'Import a file to enable row selection.';
+ $('#selectionHint').textContent=d?(n?`${n} row${n===1?'':'s'} selected in ${baseNoExt(d.exportName||d.filename)}. Drag to extend; Ctrl/Shift-click also works.`:'Cells: Tab/Shift+Tab · arrows · F2/Enter edit · Ctrl+C/V copy/paste · Ctrl+Z/Y undo/redo'):'Import a file to enable editing.';$('#selectionHint').title='Cell shortcuts: Tab / Shift+Tab move horizontally; arrow keys move between cells; F2 or Enter edits; Enter saves and moves down; Ctrl+C/V copy/paste one cell; Ctrl+Z/Y undo/redo.';
  $('#resetNewFlagsBtn').disabled=!docs.some(file=>findFieldIdx(file,'new')>=0&&file.records.some(row=>getVal(file,row,'new').trim()==='1'));
 }
 function paintSelection(docId){
@@ -362,6 +407,42 @@ function selectRowsFromPointer(d,index,event){
  selectedRowsById[d.id]=[...next];
  renderHeadOnly();paintSelection(d.id);
 }
+function selectCell(docId,rowIndex,colIndex,focus=true){
+ const d=docById(docId);if(!d||!d.records.length||!d.headers.length)return;
+ rowIndex=Math.max(0,Math.min(d.records.length-1,Number(rowIndex)||0));colIndex=Math.max(0,Math.min(d.headers.length-1,Number(colIndex)||0));
+ selectedCellById[docId]={row:rowIndex,col:colIndex};selectedRowById[docId]=rowIndex;activeId=docId;
+ if(focus){focusCell(docId,rowIndex,colIndex);return;}
+ paintSelection(docId);updateBulkToolbar();
+}
+function focusCell(docId,rowIndex,colIndex){
+ const d=docById(docId);if(!d||!d.records.length||!d.headers.length)return;
+ const rows=filteredRows(d),position=rows.findIndex(item=>item.i===rowIndex);if(position<0){toast('The selected cell is hidden by the current search. Clear or adjust the search to navigate to it.','error');return;}
+ selectedCellById[docId]={row:rowIndex,col:colIndex};selectedRowById[docId]=rowIndex;activeId=docId;
+ if(viewMode==='paged')pageById[docId]=Math.floor(position/pageSize);
+ renderSheets();renderHeadOnly();
+ const card=$$('#sheetGrid [data-card]').find(item=>item.dataset.card===docId);
+ const td=card?.querySelector(`td[data-cell="${rowIndex}"][data-col="${colIndex}"]`);
+ if(td){try{td.focus({preventScroll:true});}catch(_){td.focus();}td.scrollIntoView({block:'nearest',inline:'nearest'});}
+}
+function moveCell(docId,deltaRow=0,deltaCol=0,wrap=false){
+ const d=docById(docId),selected=selectedCellById[docId];if(!d||!selected)return;
+ const rows=filteredRows(d).map(item=>item.i),rowPos=rows.indexOf(selected.row);if(rowPos<0)return;
+ const width=d.headers.length;if(!width||!rows.length)return;
+ let nextRow=rowPos,nextCol=selected.col;
+ if(wrap){const total=rows.length*width,linear=Math.max(0,Math.min(total-1,rowPos*width+selected.col+deltaRow*width+deltaCol));nextRow=Math.floor(linear/width);nextCol=linear%width;}
+ else{nextRow=Math.max(0,Math.min(rows.length-1,rowPos+deltaRow));nextCol=Math.max(0,Math.min(width-1,selected.col+deltaCol));}
+ focusCell(docId,rows[nextRow],nextCol);
+}
+async function copySelectedCell(docId){
+ const d=docById(docId),cell=selectedCellById[docId];if(!d||!cell)return;
+ try{await navigator.clipboard.writeText(String(d.records[cell.row]?.[cell.col]??''));toast('Cell copied.');}
+ catch(_){toast('Clipboard access was blocked by the browser. Use HTTPS and allow clipboard access.','error');}
+}
+async function pasteIntoSelectedCell(docId){
+ const d=docById(docId),cell=selectedCellById[docId];if(!d||!cell)return;
+ try{const value=await navigator.clipboard.readText();if(!value.includes('\t')&&!value.includes('\n')&&!value.includes('\r')){if(String(d.records[cell.row]?.[cell.col]??'')===value)return;const history=beginUndo('Paste cell',[d]);d.records[cell.row][cell.col]=value;commitUndo(history);markDirty(d);if(['singer','title','filename'].some(field=>findFieldIdx(d,field)===cell.col))coverageDismissed=false;renderAll();focusCell(docId,cell.row,cell.col);toast('Cell pasted.');return;}toast('For multi-cell paste, copy one value at a time.','error');}
+ catch(_){toast('Clipboard access was blocked by the browser. Use HTTPS and allow clipboard access.','error');}
+}
 function renderSheetCard(d,split=false){
  const results=filteredRows(d),all=viewMode==='all';
  const actualSize=all?Math.max(1,results.length):pageSize;
@@ -369,13 +450,13 @@ function renderSheetCard(d,split=false){
  const page=all?0:Math.max(0,Math.min(pageById[d.id]||0,pages-1));pageById[d.id]=page;
  const slice=all?results:results.slice(page*actualSize,(page+1)*actualSize);const selected=selectedRowsFor(d.id),selectedCell=selectedCellById[d.id];
  const heads=d.headers.map((h,i)=>`<th scope="col" title="${esc(h)}">${esc(h||`Column ${i+1}`)}</th>`).join('');
- const rowsHtml=slice.map(({r,i})=>{const inactive=String(getVal(d,r,'use')).trim()==='0';const classes=[selected.has(i)?'selected':'',inactive?'inactive-row':''].filter(Boolean).join(' ');return `<tr data-select-row="${i}" tabindex="0" aria-selected="${selected.has(i)}" class="${classes}" ${inactive?'title="Inactive: Use = 0"':''}><td class="row-number">${i+3}</td>${r.map((v,j)=>{const selectedClass=selectedCell&&selectedCell.row===i&&selectedCell.col===j?' selected-cell':'';return `<td class="${selectedClass.trim()}" data-cell="${i}" data-col="${j}" title="Click to select; double-click or press F2 to edit"><span class="cell-text">${esc(displayCell(v))}</span></td>`;}).join('')}</tr>`}).join('');
- const pager=all?'':`<div class="pager"><button type="button" data-page="prev" data-page-size="${pageSize}" data-doc="${d.id}" ${page<=0?'disabled':''} aria-label="Previous page" title="Previous page">‹</button><span class="page-count">${page+1} / ${pages}</span><button type="button" data-page="next" data-page-size="${pageSize}" data-doc="${d.id}" ${page>=pages-1?'disabled':''} aria-label="Next page" title="Next page">›</button><button type="button" class="pager-last" data-page="last" data-page-size="${pageSize}" data-doc="${d.id}" ${page>=pages-1?'disabled':''} title="Go to last page">Last page ↠</button></div>`;
+ const rowsHtml=slice.map(({r,i})=>{const inactive=String(getVal(d,r,'use')).trim()==='0';const classes=[selected.has(i)?'selected':'',inactive?'inactive-row':''].filter(Boolean).join(' ');return `<tr data-select-row="${i}" tabindex="0" aria-selected="${selected.has(i)}" class="${classes}" ${inactive?'title="Inactive: Use = 0"':''}><td class="row-number">${i+3}</td>${r.map((v,j)=>{const selectedClass=selectedCell&&selectedCell.row===i&&selectedCell.col===j?' selected-cell':'';return `<td class="${selectedClass.trim()}" data-cell="${i}" data-col="${j}" tabindex="-1" aria-label="${esc(d.headers[j]||`Column ${j+1}`)}, row ${i+3}" title="Click to select; Tab or arrow keys to move; F2 or Enter to edit"><span class="cell-text">${esc(displayCell(v))}</span></td>`;}).join('')}</tr>`}).join('');
+ const pager=all?'':`<div class="pager"><button type="button" data-page="prev" data-page-size="${pageSize}" data-doc="${d.id}" ${page<=0?'disabled':''} aria-label="Previous page" title="Previous page">‹</button><span class="page-count">${page+1} / ${pages}</span><button type="button" data-page="next" data-page-size="${pageSize}" data-doc="${d.id}" ${page>=pages-1?'disabled':''} aria-label="Next page" title="Next page">›</button><button type="button" class="pager-last" data-page="last" data-page-size="${pageSize}" data-doc="${d.id}" ${page>=pages-1?'disabled':''} title="Go to last page" aria-label="Go to last page">&gt;|</button></div>`;
  const rangeText=all?`Showing all ${results.length.toLocaleString('en-US')} results · scroll to browse`:results.length?`${page*pageSize+1}–${Math.min((page+1)*pageSize,results.length)} of ${results.length.toLocaleString('en-US')}`:'0 results';
  return `<article class="sheet-card" data-card="${d.id}">
   <div class="sheet-card-head"><div class="sheet-card-title">${isRoot(d)?'<span class="tab-root"></span>':''}<span class="sheet-name">${esc(baseNoExt(d.exportName||d.filename))}</span><span class="sheet-card-sub">${d.records.length.toLocaleString('en-US')} rows</span></div>${split?`<span class="badge ${isRoot(d)?'root':''}">${isRoot(d)?'ROOT':'VIEW'}</span>`:`<span class="sheet-card-sub">Select a cell · F2 or double-click to edit</span>`}</div>
   <div class="table-scroll ${all?'table-scroll-all':''}"><table><thead><tr><th scope="col">#</th>${heads}</tr></thead><tbody>${rowsHtml||`<tr><td colspan="${d.headers.length+1}"><div class="empty-state">${query?'No rows match your search.':'No rows in this file yet.'}</div></td></tr>`}</tbody></table></div>
-  <div class="table-footer"><div class="pager-left">${rangeText}${selected.size?` · ${selected.size} selected`:''}${selectedRowById[d.id]!==undefined?` · anchor row ${selectedRowById[d.id]+3}`:''}</div>${pager}</div>
+  <div class="table-footer"><button type="button" class="btn btn-primary btn-sm footer-new-entry" data-new-entry="${d.id}">＋ New entry</button><div class="pager-left">${rangeText}${selected.size?` · ${selected.size} selected`:''}${selectedRowById[d.id]!==undefined?` · anchor row ${selectedRowById[d.id]+3}`:''}</div>${pager}</div>
  </article>`;
 }
 function renderSheets(){
@@ -394,11 +475,11 @@ function renderSheets(){
    e.preventDefault();
   });
   tr.addEventListener('mouseover',()=>{if(!dragSelectEnabled||!dragSelection||dragSelection.docId!==tr.closest('[data-card]').dataset.card)return;const index=Number(tr.dataset.selectRow),lo=Math.min(dragSelection.anchor,index),hi=Math.max(dragSelection.anchor,index),set=[];for(let i=lo;i<=hi;i++)set.push(i);selectedRowsById[dragSelection.docId]=set;selectedRowById[dragSelection.docId]=index;paintSelection(dragSelection.docId);});
-  tr.addEventListener('keydown',e=>{if((e.key==='Enter'||e.key===' ')&&!e.target.closest('[data-cell] input')){e.preventDefault();const card=tr.closest('[data-card]'),file=docById(card.dataset.card);if(file)selectRowsFromPointer(file,Number(tr.dataset.selectRow),e);}});
+  tr.addEventListener('keydown',e=>{if((e.key==='Enter'||e.key===' ')&&e.target===tr){e.preventDefault();const card=tr.closest('[data-card]'),file=docById(card.dataset.card);if(file)selectRowsFromPointer(file,Number(tr.dataset.selectRow),e);}});
  });
  $$('#sheetGrid [data-cell]').forEach(td=>{
-  td.addEventListener('click',()=>{const card=td.closest('[data-card]'),file=docById(card.dataset.card);if(!file)return;selectedCellById[file.id]={row:Number(td.dataset.cell),col:Number(td.dataset.col)};activeId=file.id;paintSelection(file.id);});
-  td.addEventListener('dblclick',()=>{if(td.querySelector('input'))return;const card=td.closest('[data-card]'),file=docById(card.dataset.card);if(file){selectedCellById[file.id]={row:Number(td.dataset.cell),col:Number(td.dataset.col)};activeId=file.id;beginCellEdit(td);}});
+  td.addEventListener('click',()=>{const card=td.closest('[data-card]'),file=docById(card.dataset.card);if(!file)return;selectCell(file.id,Number(td.dataset.cell),Number(td.dataset.col),false);try{td.focus({preventScroll:true});}catch(_){td.focus();}});
+  td.addEventListener('dblclick',()=>{if(td.querySelector('input'))return;const card=td.closest('[data-card]'),file=docById(card.dataset.card);if(file){selectCell(file.id,Number(td.dataset.cell),Number(td.dataset.col),false);beginCellEdit(td);}});
  });
  $('#resultCount').textContent=query?`${filteredRows(activeDoc()||{records:[]}).length.toLocaleString('en-US')} matches`:`${(activeDoc()?.records.length||0).toLocaleString('en-US')} records`;
  updateBulkToolbar();
@@ -411,33 +492,43 @@ function beginCellEdit(td){
  const input=document.createElement('input');input.className='cell-input';input.value=old;input.setAttribute('aria-label',`Edit ${d.headers[colIndex]||`column ${colIndex+1}`}, row ${rowIndex+3}`);
  const type=normalize(d.types[colIndex]||'string');input.type=(type==='int'||type==='float')?'number':'text';if(type==='float')input.step='any';if(type==='int')input.step='1';
  td.replaceChildren(input);input.focus();input.select();let finished=false;
- const finish=(save)=>{if(finished)return;finished=true;const v=input.value;if(save&&v!==old){d.records[rowIndex][colIndex]=v;markDirty(d);selectedRowById[d.id]=rowIndex;selectedCellById[d.id]={row:rowIndex,col:colIndex};toast(`Updated ${d.headers[colIndex]} in ${baseNoExt(d.exportName)}.`);renderAll();}else{renderSheets();}};
- input.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();finish(true);}if(e.key==='Escape'){e.preventDefault();finish(false);}});input.addEventListener('blur',()=>finish(true));
+ const finish=(save,moveAfter=null)=>{if(finished)return;finished=true;const v=input.value;if(save&&v!==old){const history=beginUndo('Edit cell',[d]);d.records[rowIndex][colIndex]=v;commitUndo(history);markDirty(d);selectedRowById[d.id]=rowIndex;selectedCellById[d.id]={row:rowIndex,col:colIndex};if(['singer','title','filename'].some(field=>findFieldIdx(d,field)===colIndex))coverageDismissed=false;toast(`Updated ${d.headers[colIndex]} in ${baseNoExt(d.exportName)}.`);renderAll();}else{renderSheets();}if(save&&moveAfter){if(moveAfter==='tab')moveCell(d.id,0,1,true);else if(moveAfter==='shiftTab')moveCell(d.id,0,-1,true);else if(moveAfter==='down')moveCell(d.id,1,0,false);}};
+ input.addEventListener('keydown',e=>{if(e.key==='Tab'){e.preventDefault();finish(true,e.shiftKey?'shiftTab':'tab');}else if(e.key==='Enter'){e.preventDefault();finish(true,'down');}else if(e.key==='Escape'){e.preventDefault();finish(false);}});input.addEventListener('blur',()=>finish(true));
 }
 function toggleSelectedField(field){
  const d=activeDoc();if(!d){toast('Import a file first.','error');return;}
  const index=findFieldIdx(d,field),selected=selectedRowsFor(d.id);if(index<0){toast(`${field.toUpperCase()} is not available in this file.`,'error');return;}
  if(!selected.size){toast('Select one or more rows first.','error');return;}
- let changed=0;for(const rowIndex of selected){const row=d.records[rowIndex];if(!row)continue;row[index]=String(row[index]??'').trim()==='1'?'0':'1';changed++;}
- if(changed){markDirty(d);renderAll();toast(`${field.toUpperCase()} toggled for ${changed} selected row${changed===1?'':'s'}.`);}
+ const history=beginUndo(`Toggle ${field.toUpperCase()}`,[d]);let changed=0;for(const rowIndex of selected){const row=d.records[rowIndex];if(!row)continue;row[index]=String(row[index]??'').trim()==='1'?'0':'1';changed++;}
+ if(changed){commitUndo(history);markDirty(d);renderAll();toast(`${field.toUpperCase()} toggled for ${changed} selected row${changed===1?'':'s'}.`);}
 }
 function resetNewFlags(){
  let changed=0,filesChanged=0;
+ const wouldChange=docs.filter(d=>{const index=findFieldIdx(d,'new');return index>=0&&d.records.some(row=>String(row[index]??'').trim()==='1');});
+ const history=wouldChange.length?beginUndo('Set all NEW values to 0',wouldChange):null;
  for(const d of docs){const index=findFieldIdx(d,'new');if(index<0)continue;let local=0;for(const row of d.records){if(String(row[index]??'').trim()==='1'){row[index]='0';local++;}}
   if(local){markDirty(d);changed+=local;filesChanged++;}}
  if(!changed){toast('No NEW = 1 values found in the loaded files.');return;}
- renderAll();toast(`Set NEW = 0 for ${changed} row${changed===1?'':'s'} across ${filesChanged} file${filesChanged===1?'':'s'}.`);
+ commitUndo(history);renderAll();toast(`Set NEW = 0 for ${changed} row${changed===1?'':'s'} across ${filesChanged} file${filesChanged===1?'':'s'}.`);
 }
+function trackIdentity(d,row){return [getVal(d,row,'singer'),getVal(d,row,'title')].map(normalize).join('\u001f');}
 function renderCoverage(){
- const root=docById(rootId);if(!root){const old=$('#rootCoverage');if(old)old.remove();return;}
- const base=new Set(root.records.map(r=>identity(root,r)));let missing=0;
- for(const d of docs){if(d.id===rootId)continue;for(const row of d.records){if(!base.has(identity(d,row)))missing++;}}
- let box=$('#rootCoverage');
- if(!box){box=document.createElement('div');box.id='rootCoverage';box.className='coverage';$('.sidebar-actions').before(box);}
- box.innerHTML=`<div class="coverage-top"><span>Root coverage</span><span class="coverage-count">${missing?`${missing.toLocaleString('en-US')} missing`:'In sync'}</span></div><p>${missing?'Some entries in the target lists do not exist in Root yet. Merging maps shared fields and initializes Root-only fields with safe defaults.':'Every target entry is represented in Root by artist, title and file name.'}</p><button type="button" class="btn ${missing?'btn-primary':''}" id="mergeRootBtn" ${missing?'':'disabled'}>${missing?'Add missing entries to Root':'All entries covered'}</button>`;
- $('#mergeRootBtn').addEventListener('click',mergeMissingIntoRoot);
+ const root=docById(rootId);let box=$('#rootCoverage');
+ if(!root||coverageDismissed){if(box)box.remove();return;}
+ const rootIdx=findFieldIdx(root,'filename');
+ if(rootIdx<0){if(box)box.remove();return;}
+ const rootNamesByTrack=new Map();
+ for(const row of root.records){const key=trackIdentity(root,row);if(key==='\u001f')continue;const name=normalize(getVal(root,row,'filename'));if(!rootNamesByTrack.has(key))rootNamesByTrack.set(key,new Set());rootNamesByTrack.get(key).add(name);}
+ let comparable=0,mismatches=0;
+ for(const target of docs){if(target.id===root.id)continue;const targetFilenameIdx=findFieldIdx(target,'filename');if(targetFilenameIdx<0)continue;
+  for(const row of target.records){const key=trackIdentity(target,row);if(key==='\u001f')continue;const rootNames=rootNamesByTrack.get(key);if(!rootNames)continue;comparable++;if(!rootNames.has(normalize(getVal(target,row,'filename'))))mismatches++;}
+ }
+ if(!box){box=document.createElement('section');box.id='rootCoverage';box.className='coverage';$('.sidebar-actions').before(box);}
+ const status=mismatches?`${mismatches.toLocaleString('en-US')} name mismatch${mismatches===1?'':'es'}`:comparable?`${comparable.toLocaleString('en-US')} compared · OK`:'No shared tracks';
+ box.innerHTML=`<div class="coverage-main"><span class="coverage-label">Filename alignment</span><span class="coverage-count ${mismatches?'has-mismatch':''}">${esc(status)}</span></div><p>Checks Artist + Title entries found in both Root and Targets. Extra entries in any SLK are ignored.</p><button type="button" class="coverage-close" id="dismissCoverage" aria-label="Dismiss filename check" title="Dismiss">×</button>`;
+ $('#dismissCoverage').addEventListener('click',()=>{coverageDismissed=true;box.remove();});
 }
-function renderAll(){renderSidebar();renderTabs();updateHead();renderSplitChooser();renderSyncFields();renderSheets();renderCoverage();updateBulkToolbar();}
+function renderAll(){renderSidebar();renderTabs();updateHead();renderSplitChooser();renderSheets();renderCoverage();updateBulkToolbar();}
 function renderAllAfterEdit(){renderAll();}
 function openModal(){
  const d=docById(rootId);if(!d){toast('Import a file and select one Root first.','error');return;}
@@ -461,10 +552,10 @@ function renderEntryDrafts(){
   const fields=root.headers.map((head,col)=>{
    const type=normalize(root.types[col]||'string'),numeric=type==='int'||type==='float';let value=row[col]??'';
    if(col===newIndex||col===useIndex)value='1';
-   const readonly=(col===newIndex||col===useIndex)?' readonly aria-readonly="true" title="New entries always use 1 for this field"':'';
+   const readonly='';
    const step=type==='int'?'1':type==='float'?'any':null;
-   const helper=(col===filenameIndex)?'<span class="field-helper">Auto-generated; editable</span>':((col===newIndex||col===useIndex)?'<span class="field-helper">Always 1 for new entries</span>':'');
-   return `<div class="field"><label for="entry_${entryIndex}_${col}">${esc(head||`Column ${col+1}`)}${numeric?` <span class="type-tag">${esc(type)}</span>`:''}</label><input id="entry_${entryIndex}_${col}" data-entry-index="${entryIndex}" data-add-col="${col}" type="${numeric?'number':'text'}" ${step?`step="${step}"`:''} value="${esc(value)}"${readonly}${[findFieldIdx(root,'singer'),findFieldIdx(root,'title'),filenameIndex].includes(col)?' required':''}>${helper}</div>`;
+   const helper=(col===filenameIndex)?'<span class="field-helper">Auto-generated; editable</span>':((col===newIndex||col===useIndex)?'<span class="field-helper">Editable · starts at 1</span>':'');
+   return `<div class="field"><label for="entry_${entryIndex}_${col}">${esc(head||`Column ${col+1}`)}${numeric?` <span class="type-tag">${esc(type)}</span>`:''}</label><input id="entry_${entryIndex}_${col}" data-entry-index="${entryIndex}" data-add-col="${col}" type="${numeric?'number':'text'}" ${step?`step="${step}"`:''} value="${esc(value)}"${readonly}${col===filenameIndex?' required':''}>${helper}</div>`;
   }).join('');
   const levels=targets.length?`<div class="entry-level-grid">${targets.map(target=>{const value=entryTargetLevels[entryIndex]?.[target.id]??target.targetLevel??'3';return `<div class="field"><label for="entry_${entryIndex}_level_${target.id}">${esc(baseNoExt(target.exportName||target.filename))} · Level</label><input id="entry_${entryIndex}_level_${target.id}" data-entry-index="${entryIndex}" data-entry-level="1" data-target-id="${target.id}" type="number" min="0" step="1" value="${esc(value)}"><span class="field-helper">Minimum 0 · no maximum</span></div>`;}).join('')}</div>`:`<p class="modal-copy">No selected target file has a Level column. You can still add entries to Root.</p>`;
   return `<section class="entry-card" data-entry-card="${entryIndex}" aria-labelledby="entry_card_title_${entryIndex}"><div class="entry-card-head"><div><h3 id="entry_card_title_${entryIndex}">Entry ${entryIndex+1}</h3><p class="modal-copy">${entryIndex===0?'Based on the last entry in Root.':'Based on the entry above; editable before saving.'}</p></div><button type="button" class="btn btn-sm btn-quiet entry-remove" data-remove-entry="${entryIndex}" ${entryDrafts.length===1?'disabled':''}>Remove</button></div><div class="form-section-title">Root fields</div><div class="field-grid">${fields}</div><div class="entry-level-section"><div class="form-section-title">Target levels</div>${levels}</div></section>`;
@@ -494,11 +585,13 @@ function addEntryFromForm(event){
  }
  let targetsAdded=0,targetsUpdated=0;
  const targets=targetDocs();
+ const history=beginUndo('Add new entries',[source,...targets]);
  for(let n=0;n<entryDrafts.length;n++){
-  const row=[...entryDrafts[n]];const newIndex=findFieldIdx(source,'new'),useIndex=findFieldIdx(source,'use');if(newIndex>=0)row[newIndex]='1';if(useIndex>=0)row[useIndex]='1';
+  const row=[...entryDrafts[n]];
   source.records.push(row);
   for(const target of targets){const level=entryTargetLevels[n]?.[target.id]??target.targetLevel??'3';const result=upsertToTarget(source,row,target,level);if(result==='added')targetsAdded++;else if(result==='updated')targetsUpdated++;}
  }
+ commitUndo(history);
  const lastIndex=source.records.length-1;markDirty(source);selectedRowById[source.id]=lastIndex;selectedRowsById[source.id]=[lastIndex];selectedCellById[source.id]=null;selectionAnchorById[source.id]=lastIndex;pageById[source.id]=viewMode==='all'?0:Math.max(0,Math.ceil(filteredRows(source).length/pageSize)-1);
  closeModal();activeId=source.id;splitMode=false;$('#splitToggle').checked=false;renderAll();
  toast(`${entryDrafts.length} entr${entryDrafts.length===1?'y':'ies'} added at the end of Root.${targetsAdded?` ${targetsAdded} target entr${targetsAdded===1?'y':'ies'} added.`:''}${targetsUpdated?` ${targetsUpdated} target entr${targetsUpdated===1?'y':'ies'} updated.`:''}`);
@@ -507,23 +600,14 @@ function addEntryFromForm(event){
 function closeModal(){$('#entryModal').classList.remove('visible');}
 function syncSelected(){
  const source=docById(rootId);if(!source){toast('Select a Root file first.','error');return;}
- if(!syncFieldKeys.size){toast('Select at least one field in Selective sync first.','error');return;}
+ syncFieldKeys=defaultSyncFieldKeys();
+ if(!syncFieldKeys.size){toast('No common Artist, Title, File name, BPM or Offset fields were found.','error');return;}
  if(activeId!==rootId){toast('Open the Root tab and select the row you want to apply.','error');return;}
  const idx=selectedRowById[rootId];if(idx===undefined||!source.records[idx]){toast('Select a row in Root first.','error');return;}
  const targets=targetDocs();if(!targets.length){toast('Select at least one Target file in the left panel.','error');return;}
- let added=0,updated=0;for(const t of targets){const s=upsertToTarget(source,source.records[idx],t);if(s==='added')added++;else if(s==='updated')updated++;}
- renderAll();toast(`Selected fields applied. ${added} target entr${added===1?'y':'ies'} added, ${updated} updated.`);
-}
-function mergeMissingIntoRoot(){
- const root=docById(rootId);if(!root)return;
- const seen=new Set(root.records.map(r=>identity(root,r))),pending=[];
- for(const source of docs){if(source.id===rootId)continue;for(const r of source.records){const key=identity(source,r);if(seen.has(key))continue;seen.add(key);pending.push({source,row:r});}}
- if(!pending.length){toast('Root already covers all target entries.');return;}
- if(!confirm(`Add ${pending.length} missing entr${pending.length===1?'y':'ies'} to ${root.filename}?
-
-Root-only fields (including MADI fields and metadata) will be initialized with defaults. Review these rows before exporting.`))return;
- for(const item of pending)root.records.push(mapRow(item.source,item.row,root,null));
- markDirty(root);selectedRowById[root.id]=root.records.length-1;pageById[root.id]=viewMode==='all'?0:Math.max(0,Math.ceil(root.records.length/pageSize)-1);activeId=root.id;renderAll();toast(`${pending.length} missing entr${pending.length===1?'y':'ies'} merged into Root. Review Root-only MADI and metadata fields before exporting.`);
+ const history=beginUndo('Apply Root row to targets',targets);
+ let added=0,updated=0;for(const t of targets){const s=upsertToTarget(source,source.records[idx],t,null,{matchByTrack:true});if(s==='added')added++;else if(s==='updated')updated++;}
+ commitUndo(history);renderAll();toast(`Root row applied to checked targets: ${added} entr${added===1?'y':'ies'} added, ${updated} updated. Existing Level, NEW and USE values were preserved.`);
 }
 function setSplitMode(on){splitMode=on;if(on){const initial=[rootId,activeId,...docs.filter(d=>d.syncTarget).map(d=>d.id)].filter((v,i,a)=>v&&a.indexOf(v)===i);viewIds=initial.slice(0,3);if(!viewIds.length&&docs.length)viewIds=[docs[0].id];}renderSplitChooser();renderSheets();}
 function localDate(){const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;}
@@ -537,25 +621,25 @@ async function exportZip(){if(!docs.length)return;const date=localDate(),folder=
 function safeSlkName(name){let safe=basename(String(name||'export.slk')).replace(/[\/]/g,'_').trim().replace(/^\.+|\.+$/g,'');if(!safe)safe='export.slk';if(!safe.toLowerCase().endsWith('.slk'))safe+='.slk';return safe;}
 async function importFiles(fileList){
  const files=[...fileList].filter(f=>f.name.toLowerCase().endsWith('.slk')||f.name.toLowerCase().endsWith('.txt'));
+ if(files.length)coverageDismissed=false;
  if(!files.length){toast('Choose one or more .slk files.','error');return;}
  try{updateStatus(`Reading ${files.length} file${files.length===1?'':'s'}…`);const addedDocs=[];
   for(const f of files){const d=parseSlk(f.name,new Uint8Array(await f.arrayBuffer()));const existing=docs.find(x=>normalize(x.filename)===normalize(d.filename));if(existing){d.filename=`${baseNoExt(d.filename)}_copy.slk`;d.exportName=d.filename;}d.targetLevel='3';d.syncTarget=true;docs.push(d);addedDocs.push(d);pageById[d.id]=0;}
   if(!rootId&&docs.length){rootId=docs.reduce((a,b)=>b.records.length>a.records.length?b:a).id;docById(rootId).syncTarget=false;if(!activeId)activeId=rootId;}
   if(addedDocs.length===1)activeId=addedDocs[0].id;else if(!activeId&&docs.length)activeId=rootId||docs[docs.length-1].id;
-  if(!viewIds.length)viewIds=docs.slice(0,3).map(d=>d.id);updateStatus('Files imported');renderAll();toast(`${addedDocs.length} file${addedDocs.length===1?'':'s'} imported successfully.`);
+  if(!viewIds.length)viewIds=docs.slice(0,3).map(d=>d.id);syncFieldKeys=defaultSyncFieldKeys();updateStatus('Files imported');renderAll();toast(`${addedDocs.length} file${addedDocs.length===1?'':'s'} imported successfully.`);
  }catch(e){updateStatus('Import failed');toast(e.message,'error');}$('#filePicker').value='';
 }
 function clearWorkspace(){
  if(!docs.length)return;
  if(!confirm('Remove all files from this workspace? Exported files on your computer will not be changed. Unsaved edits in this session will be discarded.'))return;
- docs=[];activeId=null;rootId=null;splitMode=false;viewIds=[];query='';pageById={};selectedRowById={};selectedRowsById={};selectedCellById={};selectionAnchorById={};dirty.clear();syncFieldKeys.clear();$('#searchInput').value='';$('#splitToggle').checked=false;renderAll();updateStatus('Workspace cleared. Import your SLK files to continue.');toast('Workspace cleared. Your original files on disk were not changed.');
+ docs=[];activeId=null;rootId=null;splitMode=false;viewIds=[];query='';pageById={};selectedRowById={};selectedRowsById={};selectedCellById={};selectionAnchorById={};dirty.clear();syncFieldKeys.clear();coverageDismissed=false;undoStack=[];redoStack=[];$('#searchInput').value='';$('#splitToggle').checked=false;renderAll();updateStatus('Workspace cleared. Import your SLK files to continue.');toast('Workspace cleared. Your original files on disk were not changed.');
 }
-$('#selectAllSyncFields').addEventListener('click',()=>{syncFieldKeys=new Set(syncFieldOptions().map(f=>f.key));renderSyncFields();updateHead();});
-$('#clearSyncFields').addEventListener('click',()=>{syncFieldKeys.clear();renderSyncFields();updateHead();});
 $('#addFilesBtn').addEventListener('click',()=>$('#filePicker').click());
 $('#filePicker').addEventListener('change',event=>importFiles(event.target.files));
 $('#resetDemoBtn').addEventListener('click',clearWorkspace);
-$('#newEntryBtn').addEventListener('click',openModal);
+$('#newEntryBtn')?.addEventListener('click',openModal);
+document.addEventListener('click',event=>{if(event.target.closest('[data-new-entry]')){const id=event.target.closest('[data-new-entry]').dataset.newEntry;if(id){activeId=id;renderAll();openModal();}}});
 $('#syncBtn').addEventListener('click',syncSelected);
 $('#exportCurrentBtn').addEventListener('click',exportCurrent);
 $('#exportZipBtn').addEventListener('click',exportZip);
@@ -574,28 +658,100 @@ $('#modalClose').addEventListener('click',closeModal);
 $('#cancelEntryBtn').addEventListener('click',closeModal);
 $('#entryModal').addEventListener('click',event=>{if(event.target===$('#entryModal'))closeModal();});
 $('#entryForm').addEventListener('submit',addEntryFromForm);
+function setCompactMode(compact){
+ compactMode=!!compact;document.documentElement.dataset.density=compactMode?'compact':'comfortable';
+ const button=$('#compactToggle'),label=$('#compactToggleLabel');
+ if(button){button.setAttribute('aria-pressed',String(compactMode));button.setAttribute('aria-label',compactMode?'Use comfortable table layout':'Use compact table layout');button.title=compactMode?'Switch to comfortable spacing':'Switch to compact spacing';}
+ if(label)label.textContent=compactMode?'Compact mode: On':'Compact mode';
+ try{localStorage.setItem('pochita-density',compactMode?'compact':'comfortable');}catch(_){/* Current session still works without storage. */}
+}
+$('#compactToggle')?.addEventListener('click',()=>setCompactMode(!compactMode));
+setCompactMode(compactMode);
 document.addEventListener('mouseup',()=>{dragSelection=null;});
 document.addEventListener('keydown',event=>{
- if(event.key==='Escape')closeModal();
- if(event.key==='F2'&&f2Enabled&&!$('#entryModal').classList.contains('visible')&&!event.target.closest('input,textarea,select,button')){
-  event.preventDefault();const d=activeDoc(),cell=d&&selectedCellById[d.id];if(!d||!cell)return;const card=$$('#sheetGrid [data-card]').find(item=>item.dataset.card===d.id);const td=card?.querySelector(`td[data-cell="${cell.row}"][data-col="${cell.col}"]`);if(td)beginCellEdit(td);
+ if(event.key==='Escape'){if($('#entryModal').classList.contains('visible'))closeModal();return;}
+ const modalOpen=$('#entryModal').classList.contains('visible');
+ const target=event.target;
+ const inInput=!!target.closest('input,textarea,select,[contenteditable="true"]');
+ if(!modalOpen&&!inInput&&(event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==='z'){event.preventDefault();undoEdit();return;}
+ if(!modalOpen&&!inInput&&(event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==='y'){event.preventDefault();redoEdit();return;}
+ if(modalOpen)return;
+ const cellTd=target.closest('#sheetGrid td[data-cell]');
+ if(event.key==='F2'&&f2Enabled&&!inInput&&!target.closest('button')){
+  event.preventDefault();let d=cellTd?docById(cellTd.closest('[data-card]').dataset.card):activeDoc(),cell=d&&(selectedCellById[d.id]||(cellTd?{row:Number(cellTd.dataset.cell),col:Number(cellTd.dataset.col)}:null));if(!d||!cell)return;
+  const card=$$('#sheetGrid [data-card]').find(item=>item.dataset.card===d.id);const td=card?.querySelector(`td[data-cell="${cell.row}"][data-col="${cell.col}"]`);if(td)beginCellEdit(td);return;
  }
+ if(!cellTd)return;
+ const card=cellTd.closest('[data-card]'),file=docById(card?.dataset.card);if(!file)return;
+ const key=event.key;
+ if(key==='Tab'){event.preventDefault();moveCell(file.id,0,event.shiftKey?-1:1,true);return;}
+ if(key==='ArrowLeft'){event.preventDefault();moveCell(file.id,0,-1,false);return;}
+ if(key==='ArrowRight'){event.preventDefault();moveCell(file.id,0,1,false);return;}
+ if(key==='ArrowUp'){event.preventDefault();moveCell(file.id,-1,0,false);return;}
+ if(key==='ArrowDown'){event.preventDefault();moveCell(file.id,1,0,false);return;}
+ if(key==='Enter'){event.preventDefault();beginCellEdit(cellTd);return;}
+ if((event.ctrlKey||event.metaKey)&&key.toLowerCase()==='c'){event.preventDefault();copySelectedCell(file.id);return;}
+ if((event.ctrlKey||event.metaKey)&&key.toLowerCase()==='v'){event.preventDefault();pasteIntoSelectedCell(file.id);return;}
+ if(key==='Home'){event.preventDefault();if(event.ctrlKey||event.metaKey)focusCell(file.id,filteredRows(file)[0]?.i??0,0);else focusCell(file.id,Number(cellTd.dataset.cell),0);return;}
+ if(key==='End'&&(event.ctrlKey||event.metaKey)){event.preventDefault();const rows=filteredRows(file);if(rows.length)focusCell(file.id,rows[rows.length-1].i,file.headers.length-1);return;}
 });
+const COLOR_THEMES={
+ 'Matcha':['#141814','#191e19','#1e241d','#232820','rgba(190,220,160,.04)','rgba(230,220,170,.03)','#b7d68a','#eef2e6','#191e18'],
+ 'Bright skin':['#F4F6F3','#FFFFFF','#F7F9F5','#EEF2EA','rgba(32,39,52,.025)','rgba(183,216,148,.06)','#B7D894','#202734','#FFFFFF'],
+ 'Night skin':['#141923','#1D2430','#222B39','#303B51','rgba(183,216,148,.025)','rgba(120,150,220,.025)','#B7D894','#E8EDF5','#1D2430'],
+ 'Polarlight':['#0b1f2a','#0f2a33','#12303a','#1a2f3f','rgba(80,230,170,.05)','rgba(120,140,255,.05)','#5fe0a8','#e6f4ef','#10262a'],
+ 'Lavendel':['#16142b','#1e1a3a','#2a2048','#32213f','rgba(170,130,255,.05)','rgba(255,140,200,.04)','#b18cff','#eeeaf8','#1c1932'],
+ 'Glut':['#1c1512','#251a16','#2e1d18','#351f1a','rgba(255,140,60,.05)','rgba(255,90,80,.04)','#ff9a5c','#f5ece6','#241a16'],
+ 'Tiefsee':['#0a1418','#0c1b22','#0e212b','#112432','rgba(60,200,255,.05)','rgba(60,200,255,.03)','#4cc9f0','#e4f2f7','#0f1d24'],
+ 'Kirschblüten':['#1d1622','#251a2a','#2e1d31','#361f33','rgba(255,170,200,.05)','rgba(255,170,200,.04)','#ffa3c4','#f6edf2','#22192a'],
+ 'Graphit':['#141618','#181b1e','#1c1f23','#202327','rgba(255,255,255,.03)','rgba(255,255,255,.02)','#7aa2ff','#eceef1','#1a1d20'],
+ 'Aurora':['#0d1424','#111d33','#1b1f3f','#261c3d','rgba(90,255,200,.06)','rgba(170,110,255,.05)','#7cf5c8','#e8f3f6','#121a2e'],
+ 'Sonnenuntergang':['#1a1424','#24162b','#311a2c','#3a1d27','rgba(255,120,90,.06)','rgba(255,180,90,.05)','#ff8a65','#f8ece8','#221729'],
+ 'Wald':['#0f1a14','#132019','#17271e','#1c2c22','rgba(120,220,140,.05)','rgba(200,230,120,.04)','#8fd694','#e9f3ea','#13201a'],
+ 'Mokka':['#1a1613','#211b17','#29211b','#2f251e','rgba(210,160,110,.05)','rgba(200,140,90,.05)','#d9a46c','#f3ebe3','#201a16'],
+ 'Nord':['#1b212b','#1f2632','#232b38','#262e3d','rgba(136,192,208,.04)','rgba(129,161,193,.04)','#88c0d0','#e5e9f0','#222834'],
+ 'Mitternacht & Gold':['#0e0f17','#13141f','#181a28','#1c1c2b','rgba(255,210,120,.05)','rgba(255,190,90,.03)','#f2c76e','#f1eee6','#151622'],
+ 'Cyber':['#0d0b1a','#140f26','#1c1033','#24103a','rgba(0,240,255,.06)','rgba(255,0,170,.05)','#00e5ff','#eae6ff','#140f24'],
+ 'Crimson':['#170e12','#1e1016','#26121a','#2d131d','rgba(255,70,100,.05)','rgba(255,120,140,.04)','#ff5c7a','#f6e9ec','#1d1116'],
+ 'Ozean':['#08161c','#0a1e27','#0c2433','#10263d','rgba(40,220,200,.06)','rgba(70,130,255,.05)','#3ee0c8','#e2f4f5','#0d1e26'],
+ 'OLED':['#000000','#040405','#08080a','#0c0c0f','rgba(255,255,255,.02)','rgba(255,255,255,.015)','#c8c8d4','#ececf0','#0b0b0d'],
+ 'Warm Dark':['#1a1816','#1f1d1b','#24211e','#292623','rgba(215,166,95,.04)','rgba(143,179,154,.03)','#d7a65f','#e3dccf','#211f1c'],
+ 'Soft Night':['#181c21','#1c2026','#20252c','#242a32','rgba(143,184,216,.04)','rgba(200,162,200,.03)','#8fb8d8','#d8dee6','#1f242b'],
+ 'Lavender Mist':['#191722','#1d1b26','#221f2d','#262333','rgba(184,161,232,.04)','rgba(232,168,196,.03)','#b8a1e8','#e2ddef','#211e2b'],
+ 'Paper':['#f4efe6','#f1ebe1','#eee7dc','#ebe4d7','rgba(143,85,48,.04)','rgba(63,107,85,.03)','#8f5530','#3b3631','#efe9df']
+};
+const THEME_KEYS=['--wd-night','--wd-blue','--wd-violet','--wd-wine','--wd-glow-top','--wd-glow-bottom','--wd-accent','--wd-text','--wd-panel'];
+function themeIsLight(name){return name==='Bright skin'||name==='Paper';}
 function setTheme(theme){
- const dark=theme==='dark';
- document.documentElement.dataset.theme=dark?'dark':'light';
- const button=$('#themeToggle'),label=$('#themeToggleLabel');
- if(button){button.setAttribute('aria-pressed',String(dark));button.setAttribute('aria-label',dark?'Switch to light theme':'Switch to dark theme');button.title=dark?'Switch to light theme':'Switch to dark theme';}
- if(label)label.textContent=dark?'Light theme':'Dark theme';
- const meta=$('meta[name=theme-color]');if(meta)meta.setAttribute('content',dark?'#141923':'#202734');
- try{localStorage.setItem('pochita-theme',dark?'dark':'light');}catch(_){/* Private browsing may disable storage; theme still works for this session. */}
+ const name=COLOR_THEMES[theme]?theme:'Matcha',c=COLOR_THEMES[name],root=document.documentElement,light=themeIsLight(name);
+ root.dataset.theme=light?'light':'dark';root.dataset.palette=name;
+ THEME_KEYS.forEach((key,i)=>root.style.setProperty(key,c[i]));
+ const text=c[7],night=c[0],panel=c[8],border=light?'#d7dcd3':'rgba(230,240,240,.17)';
+ root.style.setProperty('--ink',text);root.style.setProperty('--slate',c[1]);root.style.setProperty('--green',c[6]);root.style.setProperty('--mint',light?'#E0F8C7':text);root.style.setProperty('--canvas',night);root.style.setProperty('--panel',panel);root.style.setProperty('--muted',light?'#626B63':'#B8C3CD');root.style.setProperty('--line',border);root.style.setProperty('--line-strong',light?'#c7d0c4':'rgba(230,240,240,.27)');root.style.setProperty('--button-text',light?'#202734':night);root.style.setProperty('--theme-muted',light?'#59635b':'#b7c2cb');
+ $('#currentThemeName')?.replaceChildren(document.createTextNode(name));const swatch=$('#themeOpenSwatch');if(swatch){swatch.style.background=c[6];swatch.style.boxShadow=`inset 0 0 0 1px ${light?'#75856a':'rgba(255,255,255,.3)'}`;}
+ $$('#themeModalGrid .theme-card').forEach(card=>{card.setAttribute('aria-pressed',String(card.dataset.themeName===name));card.classList.toggle('selected',card.dataset.themeName===name);});
+ const meta=$('meta[name=theme-color]');if(meta)meta.setAttribute('content',night);
+ try{localStorage.setItem('pochita-theme',name);}catch(_){ }
 }
-$('#themeToggle')?.addEventListener('click',()=>setTheme(document.documentElement.dataset.theme==='dark'?'light':'dark'));
-// Reflect the preference selected by theme-init.js without rewriting storage.
-(function syncThemeButton(){
- const dark=document.documentElement.dataset.theme==='dark',button=$('#themeToggle'),label=$('#themeToggleLabel');
- if(button){button.setAttribute('aria-pressed',String(dark));button.setAttribute('aria-label',dark?'Switch to light theme':'Switch to dark theme');button.title=dark?'Switch to light theme':'Switch to dark theme';}
- if(label)label.textContent=dark?'Light theme':'Dark theme';
-})();
+function renderThemeCards(){
+ const grid=$('#themeModalGrid');if(!grid)return;
+ grid.innerHTML=Object.entries(COLOR_THEMES).map(([name,c])=>{
+  const light=themeIsLight(name),fg=c[7],bg=c[0],panel=c[8],accent=c[6],line=light?'#d7dcd3':'rgba(230,240,240,.17)';
+  return `<button type="button" class="theme-card" data-theme-name="${esc(name)}" aria-pressed="false" aria-label="Use ${esc(name)} theme">
+   <div class="theme-preview" style="--preview-bg:${bg};--preview-panel:${panel};--preview-fg:${fg};--preview-accent:${accent};--preview-line:${line}">
+    <div class="theme-preview-top"><span class="theme-preview-logo"></span><span class="theme-preview-brand"></span><span class="theme-preview-pill"></span></div>
+    <div class="theme-preview-body"><div class="theme-preview-side"><i></i><i></i><i></i><i></i></div><div class="theme-preview-main"><div class="theme-preview-title"></div><div class="theme-preview-tabs"><i></i><i></i><i></i></div><div class="theme-preview-table"><div class="theme-preview-th"><i></i><i></i><i></i></div><div class="theme-preview-tr"><i></i><i></i><i></i></div><div class="theme-preview-tr"><i></i><i></i><i></i></div><div class="theme-preview-tr"><i></i><i></i><i></i></div></div></div></div>
+   </div><div class="theme-card-meta"><span class="theme-card-name">${esc(name)}</span><span class="theme-card-dot" style="background:${accent}"></span></div>
+  </button>`;
+ }).join('');
+ grid.querySelectorAll('.theme-card').forEach(card=>card.addEventListener('click',()=>{setTheme(card.dataset.themeName);closeThemeModal();}));
+}
+function openThemeModal(){const modal=$('#themeModal');if(!modal)return;renderThemeCards();modal.hidden=false;document.body.classList.add('theme-modal-open');$('#themeModalClose').focus();}
+function closeThemeModal(){const modal=$('#themeModal');if(!modal)return;modal.hidden=true;document.body.classList.remove('theme-modal-open');$('#themeOpenBtn').focus();}
+$('#themeOpenBtn')?.addEventListener('click',openThemeModal);$('#themeModalClose')?.addEventListener('click',closeThemeModal);$('#themeModalDone')?.addEventListener('click',closeThemeModal);$('#themeModal')?.addEventListener('click',e=>{if(e.target===$('#themeModal'))closeThemeModal();});
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!$('#themeModal').hidden)closeThemeModal();});
+renderThemeCards();
+let savedTheme='Matcha';try{const stored=localStorage.getItem('pochita-theme');if(stored&&COLOR_THEMES[stored])savedTheme=stored;}catch(_){ }
+setTheme(savedTheme);
 
 renderAll();updateStatus('Import one or more SLK files to get started.');

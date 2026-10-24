@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="description" content="A privacy-first, browser-based editor for SLK song lists. All processing happens in your browser.">
-<title>Pochita SLK Editor v1.2.2</title>
+<title>Pochita SLK Editor v1.2.5</title>
 <meta name="theme-color" content="#202734">
 <link rel="icon" href="./favicon.svg" type="image/svg+xml">
 <link rel="icon" href="./favicon.ico" sizes="any">
@@ -23,12 +23,8 @@
       <div><div class="brand-name">Pochita <span class="brand-product">SLK Editor</span></div><div class="brand-sub">Structured list workspace</div></div>
     </div>
     <div class="topbar-right">
-      <button class="theme-toggle" id="themeToggle" type="button" aria-label="Enable dark theme" aria-pressed="false" title="Enable dark theme">
-        <svg class="theme-icon theme-icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M20.2 15.2A8.7 8.7 0 0 1 8.8 3.8a8.8 8.8 0 1 0 11.4 11.4Z"/></svg>
-        <svg class="theme-icon theme-icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M4.93 4.93l1.42 1.42m11.3 11.3 1.42 1.42M2 12h2m16 0h2M4.93 19.07l1.42-1.42m11.3-11.3 1.42-1.42"/></svg>
-        <span id="themeToggleLabel">Dark theme</span>
-      </button>
-      <span class="local-pill"><span class="local-dot"></span> Browser-only · Files stay on your device</span><span>v1.2.2</span>
+      <button type="button" class="theme-open-btn" id="themeOpenBtn" aria-haspopup="dialog" aria-controls="themeModal"><span class="theme-open-swatch" id="themeOpenSwatch" aria-hidden="true"></span><span id="currentThemeName">Matcha</span><span class="theme-open-chevron" aria-hidden="true">⌄</span></button>
+      <span class="local-pill"><span class="local-dot"></span> Browser-only · Files stay on your device</span><span>v1.2.5</span>
     </div>
   </header>
   <div class="appbody">
@@ -41,8 +37,8 @@
       <div class="main-head">
         <div class="workspace-heading"><div class="eyebrow">Data workspace / <span id="headerFileKind">SLK file</span></div><h1 class="page-title" id="pageTitle">Pochita SLK Editor</h1><div class="page-subtitle" id="pageSubtitle"><span>Load one or more SLK files to get started.</span></div></div>
         <div class="head-actions">
-          <button class="btn btn-primary" id="newEntryBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 5v14M5 12h14"/></svg>New entry</button>
-          <button class="btn btn-dark" id="syncBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20 7v5h-5M4 17v-5h5"/><path d="M5.5 9a7 7 0 0 1 11.7-2L20 9M4 15l2.8 2a7 7 0 0 0 11.7-2"/></svg>Apply selected fields</button>
+          <button class="btn btn-primary" id="newEntryBtn" hidden type="button">New entry</button>
+          <button class="btn btn-dark" id="syncBtn" title="Apply the selected Root row to checked Targets: Artist, Title, File name, BPM and Offset. Existing target Level, NEW and USE stay unchanged; new rows get NEW = 1 and USE = 1."><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20 7v5h-5M4 17v-5h5"/><path d="M5.5 9a7 7 0 0 1 11.7-2L20 9M4 15l2.8 2a7 7 0 0 0 11.7-2"/></svg>Apply Root row to Targets</button>
           <button class="btn" id="exportCurrentBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3v12m0 0 4-4m-4 4-4-4"/><path d="M5 15v4.5A1.5 1.5 0 0 0 6.5 21h11a1.5 1.5 0 0 0 1.5-1.5V15"/></svg>Export current</button>
           <button class="btn" id="exportZipBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7.5h16v13H4zM8 7.5V4h8v3.5M9 11h6M9 14h6M9 17h3"/></svg>Export all ZIP</button>
         </div>
@@ -50,7 +46,7 @@
       <div class="tabs-wrap"><div class="tabs" id="tabs"></div></div>
       <div class="workspace-toolbar">
         <div class="toolbar-left"><label class="searchbox"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.8"/><path d="m16 16 4.5 4.5"/></svg><input type="search" id="searchInput" placeholder="Search artist, title, file name…" autocomplete="off" aria-label="Search entries"></label><span class="results-label" id="resultCount">—</span><label class="compact-select" for="rowLimit"><span>View</span><select id="rowLimit" aria-label="Rows shown per page"><option value="25">25 / page</option><option value="50">50 / page</option><option value="75">75 / page</option><option value="100" selected>100 / page</option><option value="all">All entries · scroll</option></select></label></div>
-        <div class="toolbar-right"><label class="split-switch"><input type="checkbox" id="splitToggle"><span>Split view</span></label><div class="split-chooser" id="splitChooser"></div></div>
+        <div class="toolbar-right"><button type="button" class="btn btn-sm density-toggle" id="compactToggle" aria-pressed="false" title="Use a denser table layout"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 5h16M4 10h16M4 15h16M4 20h16"/><path d="M8 3v18m8-18v18"/></svg><span id="compactToggleLabel">Compact mode</span></button><label class="split-switch"><input type="checkbox" id="splitToggle"><span>Split view</span></label><div class="split-chooser" id="splitChooser"></div></div>
       </div>
       <section class="editing-toolbar" aria-label="Editing and selection actions">
         <div class="bulk-actions">
@@ -64,16 +60,20 @@
           <label class="setting-check"><input type="checkbox" id="dragSelectEnabled" checked><span>Mouse-hold row selection</span></label>
         </div>
       </section>
-      <section class="sync-fields-panel" id="syncFieldsPanel">
-        <div class="sync-fields-top"><div class="sync-fields-copy"><div class="eyebrow">Selective sync</div><strong>Choose which Root values may update target files</strong><p>Only checked fields are changed on matching rows. Nothing else in a target row is overwritten.</p></div><div class="sync-fields-actions"><button class="btn btn-sm" id="selectAllSyncFields" type="button">Select common</button><button class="btn btn-sm btn-quiet" id="clearSyncFields" type="button">Clear</button></div></div>
-        <div class="sync-fields-grid" id="syncFieldList"><span class="sync-empty">Choose a Root file to configure field-level sync.</span></div>
-        <div class="sync-hint"><span class="sync-hint-icon">i</span><span>Matching uses Singer, Title and File name as the row key. When a new target row is created, those key fields are always filled; Level and format-specific fields remain target-specific. Red rows have <code>Use = 0</code>.</span></div>
-      </section>
       <section class="sheet-area"><div class="sheet-grid" id="sheetGrid"></div></section>
       <footer class="statusbar"><div class="status-left"><span class="status-indicator"></span><span id="statusText">Ready</span></div><div id="statusRight">Changes stay in this local session until exported.</div></footer>
     </main>
   </div>
 </div>
+
+<div class="theme-modal-backdrop" id="themeModal" role="dialog" aria-modal="true" aria-labelledby="themeModalTitle" aria-describedby="themeModalCopy" hidden>
+  <section class="theme-modal">
+    <header class="theme-modal-head"><div><div class="eyebrow">Personalize workspace</div><h2 id="themeModalTitle">Choose your color theme</h2><p id="themeModalCopy">Click a preview to apply the theme. Your choice is saved in this browser.</p></div><button type="button" class="theme-modal-close" id="themeModalClose" aria-label="Close theme selector">×</button></header>
+    <div class="theme-modal-grid" id="themeModalGrid" aria-label="Available color themes"></div>
+    <footer class="theme-modal-foot"><span>Preview shows the editor header, sidebar and table colors.</span><button type="button" class="btn" id="themeModalDone">Done</button></footer>
+  </section>
+</div>
+
 <input class="file-picker" id="filePicker" type="file" accept=".slk,.txt,application/octet-stream" multiple>
 <div class="modal-backdrop" id="entryModal" role="dialog" aria-modal="true" aria-labelledby="modalTitle" aria-describedby="modalCopy">
   <form class="modal" id="entryForm">

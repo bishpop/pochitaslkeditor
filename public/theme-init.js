@@ -1,9 +1,2 @@
-/* Pochita SLK Editor theme preference initializer. No backend required. */
-(function(){
-  var theme='light';
-  try {
-    var saved=localStorage.getItem('pochita-theme');
-    if(saved==='dark'||saved==='light') theme=saved;
-  } catch (_) { /* Storage may be unavailable in private browsing. */ }
-  document.documentElement.dataset.theme=theme;
-})();
+/* Load saved display preferences before paint. */
+(function(){var t='Matcha',d='comfortable';try{var s=localStorage.getItem('pochita-theme');if(s)t=s;if(localStorage.getItem('pochita-density')==='compact')d='compact';}catch(_){}document.documentElement.dataset.theme=(t==='Bright skin'||t==='Paper')?'light':'dark';document.documentElement.dataset.palette=t;document.documentElement.dataset.density=d;})();

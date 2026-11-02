@@ -1,6 +1,15 @@
-# Pochita SLK Editor v1.2.5
+# Pochita SLK Editor v1.3.0
 
 Static browser-based SLK editor. SLK files are processed locally in your browser; there is no application backend.
+
+## Updates in v1.3.0 — spreadsheet workspace
+
+- **Ribbon** (Home / Root & Targets / View) replaces the button rows and the sidebar. File tabs are at the bottom, like Excel / Google Sheets.
+- **Virtual grid:** all rows are scrollable (no more pages); only visible rows are rendered, so thousands of rows stay smooth. Column letters + SLK row numbers (the same addresses Excel shows when opening the .slk), resizable columns, optional frozen Artist/Title columns.
+- **Position is always visible:** active cell outline, highlighted column letter / row number, optional row+column crosshair, name box (`C12`, type `A3:D9` to jump) and a formula bar.
+- **Excel-style keyboard:** Tab/Shift+Tab (wraps rows, Enter returns to the start column), arrows, Ctrl+arrows, Home/End, PageUp/Down, just type to overwrite, F2 / double-click to edit, Enter/Esc, Delete, Backspace, Shift/Ctrl selection, Ctrl+A, Ctrl+D/R fill, Ctrl+C/X/V with TSV (works with Excel/LibreOffice), Ctrl+Z/Y. Press F1 for the full list.
+- Number columns are validated on commit; selections show Count / Sum / Avg in the status bar.
+- Drag & drop import and a warning before closing with unsaved changes.
 
 ## Updates in v1.2.3
 

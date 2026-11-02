@@ -1,7 +1,7 @@
 {
   "name": "pochitaslkeditor",
   "private": true,
-  "version": "1.2.3",
+  "version": "1.3.0",
   "devDependencies": {
     "wrangler": "^4.0.0"
   }

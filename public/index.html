@@ -4,8 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="description" content="A privacy-first, browser-based editor for SLK song lists. All processing happens in your browser.">
-<title>Pochita SLK Editor v1.2.5</title>
-<meta name="theme-color" content="#202734">
+<title>Pochita SLK Editor v1.4.0</title>
+<meta name="theme-color" content="#181825">
 <link rel="icon" href="./favicon.svg" type="image/svg+xml">
 <link rel="icon" href="./favicon.ico" sizes="any">
 <link rel="icon" href="./favicon-16x16.png" type="image/png" sizes="16x16">
@@ -16,62 +16,184 @@
 <link rel="stylesheet" href="./styles.css">
 </head>
 <body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false"><symbol id="i-upload" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></symbol><symbol id="i-download" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></symbol><symbol id="i-archive" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="5" x="2" y="3" rx="1"/><path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8"/><path d="M10 12h4"/></symbol><symbol id="i-undo" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5a5.5 5.5 0 0 1-5.5 5.5H11"/></symbol><symbol id="i-redo" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m15 14 5-5-5-5"/><path d="M20 9H9.5A5.5 5.5 0 0 0 4 14.5A5.5 5.5 0 0 0 9.5 20H13"/></symbol><symbol id="i-cut" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="3"/><path d="M8.12 8.12 12 12"/><path d="M20 4 8.12 15.88"/><circle cx="6" cy="18" r="3"/><path d="M14.8 14.8 20 20"/></symbol><symbol id="i-copy" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></symbol><symbol id="i-paste" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M15 2H9a1 1 0 0 0-1 1v2c0 .6.4 1 1 1h6c.6 0 1-.4 1-1V3c0-.6-.4-1-1-1Z"/><path d="M8 4H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/><path d="M16 4h2a2 2 0 0 1 2 2v4"/><path d="M21 14H11"/><path d="m15 10-4 4 4 4"/></symbol><symbol id="i-filldown" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17V3"/><path d="m6 11 6 6 6-6"/><path d="M19 21H5"/></symbol><symbol id="i-fillright" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 12H3"/><path d="m11 6 6 6-6 6"/><path d="M21 19V5"/></symbol><symbol id="i-eraser" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m7 21-4.3-4.3c-1-1-1-2.5 0-3.4l9.6-9.6c1-1 2.5-1 3.4 0l5.6 5.6c1 1 1 2.5 0 3.4L13 21"/><path d="M22 21H7"/><path d="m5 11 9 9"/></symbol><symbol id="i-plus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></symbol><symbol id="i-plussq" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M8 12h8"/><path d="M12 8v8"/></symbol><symbol id="i-sync" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></symbol><symbol id="i-search" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></symbol><symbol id="i-spark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/><path d="M19 17v4"/><path d="M17 19h4"/></symbol><symbol id="i-eye" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></symbol><symbol id="i-reset" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></symbol><symbol id="i-split" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M12 3v18"/></symbol><symbol id="i-rows" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18"/><path d="M3 15h18"/></symbol><symbol id="i-grid" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18"/><path d="M3 15h18"/><path d="M9 3v18"/><path d="M15 3v18"/></symbol><symbol id="i-pin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"/></symbol><symbol id="i-fit" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m18 8 4 4-4 4"/><path d="M2 12h20"/><path d="m6 8-4 4 4 4"/></symbol><symbol id="i-cross" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="22" x2="18" y1="12" y2="12"/><line x1="6" x2="2" y1="12" y2="12"/><line x1="12" x2="12" y1="6" y2="2"/><line x1="12" x2="12" y1="22" y2="18"/></symbol><symbol id="i-keyboard" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 8h.01"/><path d="M12 12h.01"/><path d="M14 8h.01"/><path d="M16 12h.01"/><path d="M18 8h.01"/><path d="M6 8h.01"/><path d="M7 16h10"/><path d="M8 12h.01"/><rect width="20" height="16" x="2" y="4" rx="2"/></symbol><symbol id="i-trash" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></symbol><symbol id="i-chevup" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m18 15-6-6-6 6"/></symbol><symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></symbol><symbol id="i-enter" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 10 4 15 9 20"/><path d="M20 4v7a4 4 0 0 1-4 4H4"/></symbol></svg>
 <div class="app" id="app">
-  <header class="topbar">
+  <header class="titlebar">
     <div class="brand">
-      <div class="brand-mark"><img src="./pochita-mascot.png" width="40" height="40" alt="Pochita mascot" decoding="async"></div>
-      <div><div class="brand-name">Pochita <span class="brand-product">SLK Editor</span></div><div class="brand-sub">Structured list workspace</div></div>
+      <img class="brand-img" src="./pochita-mascot.png" width="26" height="26" alt="" decoding="async">
+      <div class="brand-name">Pochita <span class="brand-product">SLK Editor</span></div>
     </div>
-    <div class="topbar-right">
-      <button type="button" class="theme-open-btn" id="themeOpenBtn" aria-haspopup="dialog" aria-controls="themeModal"><span class="theme-open-swatch" id="themeOpenSwatch" aria-hidden="true"></span><span id="currentThemeName">Matcha</span><span class="theme-open-chevron" aria-hidden="true">⌄</span></button>
-      <span class="local-pill"><span class="local-dot"></span> Browser-only · Files stay on your device</span><span>v1.2.5</span>
+    <div class="doc-title" id="docTitle"><span id="docTitleName">No file loaded</span><span class="doc-dirty" id="docTitleDirty" hidden>● unsaved</span></div>
+    <div class="titlebar-right">
+      <button type="button" class="theme-open-btn" id="themeOpenBtn" aria-haspopup="dialog" aria-controls="themeModal"><span class="theme-open-swatch" id="themeOpenSwatch" aria-hidden="true"></span><span id="currentThemeName">Catppuccin Mocha</span><span class="theme-open-chevron" aria-hidden="true">⌄</span></button>
+      <span class="local-pill"><span class="local-dot"></span> Browser-only · files stay on your device</span><span class="ver">v1.4.0</span>
     </div>
   </header>
-  <div class="appbody">
-    <aside class="sidebar">
-      <div class="sidebar-head"><div class="eyebrow">Project files</div><div class="side-title-row"><div class="side-title">SLK workspace</div><span class="count-pill" id="fileCount">0 files</span></div></div>
-      <div class="sidebar-files" id="fileList"><div class="loading"><div class="loading-inner"><div class="loading-mark">P</div>Import one or more SLK files to begin…</div></div></div>
-      <div class="sidebar-actions"><button class="btn btn-primary import-files-btn" id="addFilesBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 5v14M5 12h14"/></svg>Import SLK files</button><button class="btn btn-quiet btn-sm" id="resetDemoBtn" title="Remove all imported files from this workspace">Clear workspace</button></div>
-    </aside>
-    <main class="main">
-      <div class="main-head">
-        <div class="workspace-heading"><div class="eyebrow">Data workspace / <span id="headerFileKind">SLK file</span></div><h1 class="page-title" id="pageTitle">Pochita SLK Editor</h1><div class="page-subtitle" id="pageSubtitle"><span>Load one or more SLK files to get started.</span></div></div>
-        <div class="head-actions">
-          <button class="btn btn-primary" id="newEntryBtn" hidden type="button">New entry</button>
-          <button class="btn btn-dark" id="syncBtn" title="Apply the selected Root row to checked Targets: Artist, Title, File name, BPM and Offset. Existing target Level, NEW and USE stay unchanged; new rows get NEW = 1 and USE = 1."><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20 7v5h-5M4 17v-5h5"/><path d="M5.5 9a7 7 0 0 1 11.7-2L20 9M4 15l2.8 2a7 7 0 0 0 11.7-2"/></svg>Apply Root row to Targets</button>
-          <button class="btn" id="exportCurrentBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3v12m0 0 4-4m-4 4-4-4"/><path d="M5 15v4.5A1.5 1.5 0 0 0 6.5 21h11a1.5 1.5 0 0 0 1.5-1.5V15"/></svg>Export current</button>
-          <button class="btn" id="exportZipBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7.5h16v13H4zM8 7.5V4h8v3.5M9 11h6M9 14h6M9 17h3"/></svg>Export all ZIP</button>
-        </div>
-      </div>
-      <div class="tabs-wrap"><div class="tabs" id="tabs"></div></div>
-      <div class="workspace-toolbar">
-        <div class="toolbar-left"><label class="searchbox"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.8"/><path d="m16 16 4.5 4.5"/></svg><input type="search" id="searchInput" placeholder="Search artist, title, file name…" autocomplete="off" aria-label="Search entries"></label><span class="results-label" id="resultCount">—</span><label class="compact-select" for="rowLimit"><span>View</span><select id="rowLimit" aria-label="Rows shown per page"><option value="25">25 / page</option><option value="50">50 / page</option><option value="75">75 / page</option><option value="100" selected>100 / page</option><option value="all">All entries · scroll</option></select></label></div>
-        <div class="toolbar-right"><button type="button" class="btn btn-sm density-toggle" id="compactToggle" aria-pressed="false" title="Use a denser table layout"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 5h16M4 10h16M4 15h16M4 20h16"/><path d="M8 3v18m8-18v18"/></svg><span id="compactToggleLabel">Compact mode</span></button><label class="split-switch"><input type="checkbox" id="splitToggle"><span>Split view</span></label><div class="split-chooser" id="splitChooser"></div></div>
-      </div>
-      <section class="editing-toolbar" aria-label="Editing and selection actions">
-        <div class="bulk-actions">
-          <button type="button" class="btn btn-sm" id="resetNewFlagsBtn" title="Set NEW to 0 for every loaded file where NEW currently equals 1">Set NEW = 0 · All files</button>
-          <button type="button" class="btn btn-sm" id="toggleSelectedNewBtn" disabled>Toggle NEW · <span id="selectedCountNew">0 selected</span></button>
-          <button type="button" class="btn btn-sm" id="toggleSelectedUseBtn" disabled>Toggle USE · selected</button>
-          <span class="selection-hint" id="selectionHint">Select rows by dragging across them, or use Ctrl / Shift.</span>
-        </div>
-        <div class="edit-settings">
-          <label class="setting-check"><input type="checkbox" id="f2Enabled" checked><span>F2 edits selected cell</span></label>
-          <label class="setting-check"><input type="checkbox" id="dragSelectEnabled" checked><span>Mouse-hold row selection</span></label>
-        </div>
+
+  <nav class="ribbon" id="ribbon" aria-label="Ribbon">
+    <div class="ribbon-tabs" role="tablist">
+      <button type="button" class="rtab active" role="tab" data-rtab="home" aria-selected="true">Home</button>
+      <button type="button" class="rtab" role="tab" data-rtab="sync" aria-selected="false">Root &amp; Targets</button>
+      <button type="button" class="rtab" role="tab" data-rtab="view" aria-selected="false">View</button>
+      <span class="ribbon-spacer"></span>
+      <button type="button" class="ribbon-collapse" id="ribbonCollapse" title="Collapse / expand ribbon (Ctrl+F1)" aria-label="Collapse ribbon"><svg class="ic" aria-hidden="true"><use href="#i-chevup"/></svg></button>
+    </div>
+    <div class="ribbon-body" id="ribbonBody">
+      <section class="rpanel active" role="tabpanel" data-rpanel="home">
+        <div class="rgroup"><div class="rgroup-body">
+          <button type="button" class="rbtn" id="addFilesBtn" title="Import SLK files (or drop them anywhere on the page)"><svg class="ic" aria-hidden="true"><use href="#i-upload"/></svg><span>Import</span></button>
+          <button type="button" class="rbtn" id="exportCurrentBtn" title="Export the current file as .slk"><svg class="ic" aria-hidden="true"><use href="#i-download"/></svg><span>Export</span></button>
+          <button type="button" class="rbtn" id="exportZipBtn" title="Export all files as a ZIP"><svg class="ic" aria-hidden="true"><use href="#i-archive"/></svg><span>Export all</span></button>
+        </div><div class="rgroup-label">Files</div></div>
+        <div class="rgroup"><div class="rgroup-body">
+          <div class="rstack"><button type="button" class="rbtn sm" id="undoBtn" title="Undo (Ctrl+Z)"><svg class="ic" aria-hidden="true"><use href="#i-undo"/></svg><span>Undo</span></button><button type="button" class="rbtn sm" id="redoBtn" title="Redo (Ctrl+Y)"><svg class="ic" aria-hidden="true"><use href="#i-redo"/></svg><span>Redo</span></button></div>
+        </div><div class="rgroup-label">History</div></div>
+        <div class="rgroup"><div class="rgroup-body">
+          <button type="button" class="rbtn" id="pasteBtn" title="Paste (Ctrl+V)"><svg class="ic" aria-hidden="true"><use href="#i-paste"/></svg><span>Paste</span></button>
+          <div class="rstack"><button type="button" class="rbtn sm" id="cutBtn" title="Cut (Ctrl+X)"><svg class="ic" aria-hidden="true"><use href="#i-cut"/></svg><span>Cut</span></button><button type="button" class="rbtn sm" id="copyBtn" title="Copy (Ctrl+C)"><svg class="ic" aria-hidden="true"><use href="#i-copy"/></svg><span>Copy</span></button><button type="button" class="rbtn sm" id="clearBtn" title="Clear contents (Delete)"><svg class="ic" aria-hidden="true"><use href="#i-eraser"/></svg><span>Clear</span></button></div>
+          <div class="rstack"><button type="button" class="rbtn sm" id="fillDownBtn" title="Fill down (Ctrl+D)"><svg class="ic" aria-hidden="true"><use href="#i-filldown"/></svg><span>Fill down</span></button><button type="button" class="rbtn sm" id="fillRightBtn" title="Fill right (Ctrl+R)"><svg class="ic" aria-hidden="true"><use href="#i-fillright"/></svg><span>Fill right</span></button></div>
+        </div><div class="rgroup-label">Cells</div></div>
+        <div class="rgroup"><div class="rgroup-body">
+          <button type="button" class="rbtn" id="newEntryBtn" title="Create new entries in Root and all enabled targets"><svg class="ic" aria-hidden="true"><use href="#i-plussq"/></svg><span>New entry</span></button>
+          <button type="button" class="rbtn" id="insertRowBelowBtn" title="Insert a new song row directly in the table with auto-incremented TBM and default values (Ctrl+Enter)"><svg class="ic" aria-hidden="true"><use href="#i-plus"/></svg><span>+ Row below</span></button>
+          <div class="rstack">
+            <button type="button" class="rbtn sm" id="insertRowAboveBtn" title="Insert a new song row above the active cell"><svg class="ic" aria-hidden="true"><use href="#i-plus"/></svg><span>+ Row above</span></button>
+            <button type="button" class="rbtn sm" id="dupRowBtn" title="Duplicate selected row(s) and auto-increment TBM code (Ctrl+Shift+D)"><svg class="ic" aria-hidden="true"><use href="#i-copy"/></svg><span>Duplicate row</span></button>
+            <button type="button" class="rbtn sm" id="deleteRowBtn" title="Delete selected song row(s)"><svg class="ic" aria-hidden="true"><use href="#i-trash"/></svg><span>Delete row</span></button>
+          </div>
+          <div class="rstack">
+            <button type="button" class="rbtn sm" id="insertColRightBtn" title="Insert a new column to the right of the active column"><svg class="ic" aria-hidden="true"><use href="#i-grid"/></svg><span>+ Col right</span></button>
+            <button type="button" class="rbtn sm" id="insertColLeftBtn" title="Insert a new column to the left of the active column"><svg class="ic" aria-hidden="true"><use href="#i-grid"/></svg><span>+ Col left</span></button>
+            <button type="button" class="rbtn sm" id="deleteColBtn" title="Delete the active column"><svg class="ic" aria-hidden="true"><use href="#i-trash"/></svg><span>Delete col</span></button>
+          </div>
+        </div><div class="rgroup-label">Rows &amp; Columns</div></div>
+        <div class="rgroup"><div class="rgroup-body">
+          <button type="button" class="rbtn" id="toggleSelectedNewBtn" title="Toggle NEW (0/1) for all selected rows"><svg class="ic" aria-hidden="true"><use href="#i-spark"/></svg><span>Toggle NEW</span></button>
+          <button type="button" class="rbtn" id="toggleSelectedUseBtn" title="Toggle USE (0/1) for all selected rows"><svg class="ic" aria-hidden="true"><use href="#i-eye"/></svg><span>Toggle USE</span></button>
+          <div class="rstack">
+            <button type="button" class="rbtn sm" id="resetNewFlagsBtn" title="Set NEW to 0 in every loaded file where it is currently 1"><svg class="ic" aria-hidden="true"><use href="#i-reset"/></svg><span>All NEW = 0</span></button>
+            <button type="button" class="rbtn sm" id="autoTbmBtn" title="Assign next sequential TBM filenames to selected rows"><svg class="ic" aria-hidden="true"><use href="#i-spark"/></svg><span>Auto-TBM</span></button>
+            <button type="button" class="rbtn sm" id="checkIssuesBtn" title="Find duplicate TBM filenames, duplicate tracks or empty required fields"><svg class="ic" aria-hidden="true"><use href="#i-check"/></svg><span>Check TBM</span></button>
+          </div>
+        </div><div class="rgroup-label">SLK Tools</div></div>
+        <div class="rgroup"><div class="rgroup-body rgroup-find">
+          <label class="searchbox"><svg class="ic" aria-hidden="true"><use href="#i-search"/></svg><input type="search" id="searchInput" placeholder="Filter rows… (Ctrl+F)" autocomplete="off" aria-label="Filter rows"></label>
+          <div class="rstack">
+            <button type="button" class="rbtn sm" id="replaceModalBtn" title="Find & Replace text (Ctrl+H)"><svg class="ic" aria-hidden="true"><use href="#i-search"/></svg><span>Replace…</span></button>
+            <span class="results-label" id="resultCount">—</span>
+          </div>
+        </div><div class="rgroup-label">Find</div></div>
       </section>
-      <section class="sheet-area"><div class="sheet-grid" id="sheetGrid"></div></section>
-      <footer class="statusbar"><div class="status-left"><span class="status-indicator"></span><span id="statusText">Ready</span></div><div id="statusRight">Changes stay in this local session until exported.</div></footer>
-    </main>
+
+      <section class="rpanel" role="tabpanel" data-rpanel="sync" hidden>
+        <div class="rgroup rgroup-files"><div class="rgroup-body"><div class="file-strip" id="fileList"></div></div><div class="rgroup-label">Files — choose one Root, tick Targets and set their Level</div></div>
+        <div class="rgroup"><div class="rgroup-body">
+          <button type="button" class="rbtn" id="syncBtn" title="Apply the active Root row(s) to checked Targets: Artist, Title, File name, BPM and Offset. Existing target Level, NEW and USE stay unchanged; new rows get NEW = 1 and USE = 1."><svg class="ic" aria-hidden="true"><use href="#i-sync"/></svg><span>Apply Root row</span></button>
+          <div class="coverage-box" id="coverageBox"></div>
+        </div><div class="rgroup-label">Sync</div></div>
+        <div class="rgroup"><div class="rgroup-body">
+          <button type="button" class="rbtn" id="resetDemoBtn" title="Remove all imported files from this workspace"><svg class="ic" aria-hidden="true"><use href="#i-trash"/></svg><span>Clear all</span></button>
+        </div><div class="rgroup-label">Workspace</div></div>
+      </section>
+
+      <section class="rpanel" role="tabpanel" data-rpanel="view" hidden>
+        <div class="rgroup"><div class="rgroup-body">
+          <button type="button" class="rbtn" id="compactToggle" title="Use a denser table layout" aria-pressed="false"><svg class="ic" aria-hidden="true"><use href="#i-rows"/></svg><span>Compact rows</span></button>
+          <button type="button" class="rbtn" id="freezeToggle" title="Keep the first two columns (Artist, Title) visible while scrolling sideways" aria-pressed="false"><svg class="ic" aria-hidden="true"><use href="#i-pin"/></svg><span>Freeze 2 cols</span></button>
+          <button type="button" class="rbtn" id="crossToggle" title="Tint the row and column of the active cell" aria-pressed="true"><svg class="ic" aria-hidden="true"><use href="#i-cross"/></svg><span>Crosshair</span></button>
+        </div><div class="rgroup-label">Table</div></div>
+        <div class="rgroup"><div class="rgroup-body">
+          <button type="button" class="rbtn" id="autoFitBtn" title="Fit all column widths to their content (double-click a header edge to fit one column)"><svg class="ic" aria-hidden="true"><use href="#i-fit"/></svg><span>Auto-fit cols</span></button>
+        </div><div class="rgroup-label">Columns</div></div>
+        <div class="rgroup"><div class="rgroup-body rgroup-split">
+          <label class="split-switch"><input type="checkbox" id="splitToggle"><span>Split view</span></label>
+          <div class="split-chooser" id="splitChooser"></div>
+        </div><div class="rgroup-label">Windows (up to 3 files)</div></div>
+        <div class="rgroup"><div class="rgroup-body rgroup-opts">
+          <label class="opt-check"><input type="checkbox" id="enterEdits"><span>Enter edits the cell (instead of moving down)</span></label>
+        </div><div class="rgroup-label">Keyboard</div></div>
+        <div class="rgroup"><div class="rgroup-body">
+          <button type="button" class="rbtn" id="shortcutsBtn" title="Show all keyboard shortcuts (F1)"><svg class="ic" aria-hidden="true"><use href="#i-keyboard"/></svg><span>Shortcuts</span></button>
+        </div><div class="rgroup-label">Help</div></div>
+      </section>
+    </div>
+  </nav>
+
+  <div class="formulabar" id="formulaBar">
+    <div class="namebox"><input id="nameBox" type="text" spellcheck="false" autocomplete="off" aria-label="Cell reference — type e.g. C12 and press Enter to jump" title="Cell reference · type e.g. C12 or A1:D9 and press Enter to jump" placeholder="—"></div>
+    <div class="fb-col" id="fbCol" title="Column name and type"></div>
+    <span class="fb-fx" aria-hidden="true"><svg class="ic" aria-hidden="true"><use href="#i-enter"/></svg></span>
+    <input id="formulaInput" type="text" spellcheck="false" autocomplete="off" aria-label="Cell content" placeholder="Select a cell to see or edit its content">
   </div>
+
+  <main class="main">
+    <section class="sheet-area"><div class="sheet-grid" id="sheetGrid"></div></section>
+  </main>
+
+  <div class="sheetbar">
+    <button type="button" class="sheet-add" id="sheetAddBtn" title="Import SLK files" aria-label="Import SLK files"><svg class="ic" aria-hidden="true"><use href="#i-plus"/></svg></button>
+    <div class="tabs" id="tabs"></div>
+  </div>
+  <footer class="statusbar">
+    <div class="status-left"><span class="status-indicator"></span><span id="statusText">Ready</span></div>
+    <div class="status-mid" id="selInfo"></div>
+    <div class="status-right" id="statusRight">Changes stay in this local session until exported.</div>
+  </footer>
 </div>
+
+<div class="ctx-menu" id="ctxMenu" role="menu" hidden></div>
 
 <div class="theme-modal-backdrop" id="themeModal" role="dialog" aria-modal="true" aria-labelledby="themeModalTitle" aria-describedby="themeModalCopy" hidden>
   <section class="theme-modal">
-    <header class="theme-modal-head"><div><div class="eyebrow">Personalize workspace</div><h2 id="themeModalTitle">Choose your color theme</h2><p id="themeModalCopy">Click a preview to apply the theme. Your choice is saved in this browser.</p></div><button type="button" class="theme-modal-close" id="themeModalClose" aria-label="Close theme selector">×</button></header>
+    <header class="theme-modal-head"><div><div class="eyebrow">Personalize workspace</div><h2 id="themeModalTitle">Choose your color theme</h2><p id="themeModalCopy">2 dark themes (Catppuccin Mocha, Nord) and 2 light themes (Catppuccin Latte, Claude).</p></div><button type="button" class="theme-modal-close" id="themeModalClose" aria-label="Close theme selector">×</button></header>
     <div class="theme-modal-grid" id="themeModalGrid" aria-label="Available color themes"></div>
-    <footer class="theme-modal-foot"><span>Preview shows the editor header, sidebar and table colors.</span><button type="button" class="btn" id="themeModalDone">Done</button></footer>
+    <footer class="theme-modal-foot"><span>Your theme preference is saved automatically in this browser.</span><button type="button" class="btn" id="themeModalDone">Done</button></footer>
   </section>
+</div>
+
+<div class="modal-backdrop" id="helpModal" role="dialog" aria-modal="true" aria-labelledby="helpTitle">
+  <div class="modal modal-narrow">
+    <div class="modal-head"><div><div class="eyebrow">Help</div><h2 class="modal-title" id="helpTitle">Keyboard shortcuts</h2></div><button type="button" class="modal-close" id="helpClose" aria-label="Close">×</button></div>
+    <div class="modal-body"><div class="help-grid" id="helpGrid"></div></div>
+  </div>
+</div>
+
+<div class="modal-backdrop" id="colModal" role="dialog" aria-modal="true" aria-labelledby="colModalTitle">
+  <form class="modal modal-compact" id="colForm">
+    <div class="modal-head"><div><div class="eyebrow">Table structure</div><h2 class="modal-title" id="colModalTitle">Insert column</h2><p class="modal-copy">Adds a new column to the current SLK file (sets Row 1 header, Row 2 type, and fills data rows).</p></div><button type="button" class="modal-close" id="colModalClose" aria-label="Close">×</button></div>
+    <div class="modal-body">
+      <div class="field-grid-2">
+        <div class="field"><label for="colNameInput">Column name (Row 1)</label><input id="colNameInput" type="text" required placeholder="e.g. SubTitle" autocomplete="off"></div>
+        <div class="field"><label for="colTypeSelect">Data type (Row 2)</label><select id="colTypeSelect"><option value="string">string (text)</option><option value="int">int (whole number)</option><option value="float">float (decimal)</option></select></div>
+        <div class="field"><label for="colDefaultInput">Default value for rows 3+</label><input id="colDefaultInput" type="text" placeholder="Leave empty or 0" autocomplete="off"></div>
+        <div class="field"><label for="colPosSelect">Position</label><select id="colPosSelect"><option value="right">Right of active column</option><option value="left">Left of active column</option><option value="end">At the end of the table</option></select></div>
+      </div>
+    </div>
+    <div class="modal-foot"><div class="modal-foot-note">Can be undone with Ctrl+Z.</div><div class="modal-foot-actions"><button type="button" class="btn" id="colCancelBtn">Cancel</button><button type="submit" class="btn btn-primary">Insert column</button></div></div>
+  </form>
+</div>
+
+<div class="modal-backdrop" id="replaceModal" role="dialog" aria-modal="true" aria-labelledby="replaceModalTitle">
+  <form class="modal modal-compact" id="replaceForm">
+    <div class="modal-head"><div><div class="eyebrow">Search &amp; Replace</div><h2 class="modal-title" id="replaceModalTitle">Find &amp; Replace</h2><p class="modal-copy">Replace text across the current file or within a single column.</p></div><button type="button" class="modal-close" id="replaceModalClose" aria-label="Close">×</button></div>
+    <div class="modal-body">
+      <div class="field-grid-2">
+        <div class="field"><label for="findTextInput">Find what</label><input id="findTextInput" type="text" required autocomplete="off"></div>
+        <div class="field"><label for="replaceTextInput">Replace with</label><input id="replaceTextInput" type="text" autocomplete="off"></div>
+        <div class="field"><label for="replaceScopeSelect">Column scope</label><select id="replaceScopeSelect"></select></div>
+        <div class="field"><label for="replaceCaseCheck">Options</label><label class="opt-check" style="height:34px"><input type="checkbox" id="replaceCaseCheck"><span>Match case</span></label></div>
+      </div>
+    </div>
+    <div class="modal-foot"><div class="modal-foot-note">Replaces in song rows (Row 3+) and records an Undo step.</div><div class="modal-foot-actions"><button type="button" class="btn" id="replaceCancelBtn">Close</button><button type="submit" class="btn btn-primary">Replace all</button></div></div>
+  </form>
+</div>
+
+<div class="modal-backdrop" id="issuesModal" role="dialog" aria-modal="true" aria-labelledby="issuesModalTitle">
+  <div class="modal modal-narrow">
+    <div class="modal-head"><div><div class="eyebrow">Quality Check</div><h2 class="modal-title" id="issuesModalTitle">SLK &amp; TBM Health Check</h2><p class="modal-copy" id="issuesModalSub">Checks for duplicate TBM filenames, duplicate Artist + Title entries, and empty fields.</p></div><button type="button" class="modal-close" id="issuesModalClose" aria-label="Close">×</button></div>
+    <div class="modal-body"><div class="issue-list" id="issuesList"></div></div>
+    <div class="modal-foot"><div class="modal-foot-note">Click "Jump" on any row to select and repair it directly in the table.</div><div class="modal-foot-actions"><button type="button" class="btn" id="issuesDoneBtn">Close</button></div></div>
+  </div>
 </div>
 
 <input class="file-picker" id="filePicker" type="file" accept=".slk,.txt,application/octet-stream" multiple>
@@ -94,7 +216,5 @@
 <script src="./vendor/jszip.min.js" defer></script>
 <script src="./vendor/cp949.js" defer></script>
 <script src="./app.js" defer></script>
-<!-- Application logic is kept in the external app.js file for a static, GitHub Pages-friendly site. -->
-
 </body>
 </html>

@@ -1,4 +1,12 @@
-# Pochita SLK Editor v1.4.0
+# Pochita SLK Editor v1.4.1
+
+## Updates in v1.4.1 — import & encoding reliability
+
+- **Expanded encoding support:** automatic UTF-8 (with/without BOM), UTF-16 LE/BE (with/without BOM), CP949, and Windows-1252 detection; matching export encoding is preserved.
+- **Tolerant SYLK parser:** accepts X/Y coordinates in either order, carries forward omitted coordinates, and correctly handles escaped semicolons and quoted values.
+- **TSV fallback:** tab-separated `.slk`/`.txt` tables can be imported when they do not contain SYLK records.
+- **Safer multi-file import:** a damaged file no longer aborts the rest of a batch; duplicate filenames are uniquified.
+- **Correct export extension:** imported `.txt` tables export as `.slk`.
 
 Static browser-based SLK editor. SLK files are processed locally in your browser; there is no application backend.
 
@@ -46,3 +54,10 @@ Static browser-based SLK editor. SLK files are processed locally in your browser
 - **GitHub Pages:** select **Source → GitHub Actions**. The workflow uploads only `public/`.
 
 Repository visibility and website visibility are separate: the deployed website is publicly reachable unless an access restriction is added. Do not commit private `.slk` lists into the repository. Changes remain in memory until exported. Keep backups of original SLKs before production use.
+## Tests
+
+Run the encoding, parser, and export round-trip checks with Node.js:
+
+```sh
+npm test
+```

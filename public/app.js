@@ -18,7 +18,6 @@ const SYNC_FIELD_CANDIDATES = [
  {key:'bpm', label:'BPM'}, {key:'offset', label:'Offset'}, {key:'new', label:'New'}, {key:'use', label:'Use'}
 ];
 const DEFAULT_SYNC_FIELD_KEYS = new Set(['singer','title','filename','bpm','offset']);
-const CELL_RE = /^C;X(\d+);Y(\d+);K(.*)$/;
 
 function esc(v){return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
 function basename(s){return String(s||'file.slk').split(/[\\/]/).pop();}
@@ -303,34 +302,132 @@ function undoEdit(){applyHistory(undoStack,redoStack,'Undo');}
 function redoEdit(){applyHistory(redoStack,undoStack,'Redo');}
 function makeId(){return (globalThis.crypto&&crypto.randomUUID)?crypto.randomUUID():`doc_${Date.now()}_${Math.random().toString(16).slice(2)}`;}
 
-function decodeSlkBytes(raw){
- const bytes=raw instanceof Uint8Array?raw:new Uint8Array(raw);
- if(bytes.length>=3&&bytes[0]===0xEF&&bytes[1]===0xBB&&bytes[2]===0xBF)return {text:new TextDecoder('utf-8').decode(bytes),encoding:'utf-8-sig'};
- try{return {text:new TextDecoder('utf-8',{fatal:true}).decode(bytes),encoding:'utf-8'};}catch{}
- return {text:PochitaCP949.decode(bytes),encoding:'cp949'};
-}
-function unquoteSlk(value){return value.length>=2&&value[0]==='"'&&value[value.length-1]==='"'?value.slice(1,-1).replace(/""/g,'"'):value;}
-
-/* 1:1 SLK Parser: Includes Row 1 (Headers) and Row 2 (Types) directly in records[0] and records[1] */
-function parseSlk(name,raw){
- const decoded=decodeSlkBytes(raw),text=decoded.text,newline=text.includes('\r\n')?'\r\n':'\n';
- const lines=text.replace(/\r\n/g,'\n').replace(/\r/g,'\n').split('\n');if(lines.length&&lines[lines.length-1]==='')lines.pop();
- const idLine=lines.find(line=>line.startsWith('ID'))||'ID;PCALCOOO32',endLine=[...lines].reverse().find(line=>line==='E')||'E';
- const cells={};
- for(const line of lines){const m=CELL_RE.exec(line);if(!m)continue;const x=Number(m[1]),y=Number(m[2]);cells[y]??={};cells[y][x]=unquoteSlk(m[3]);}
- const ys=Object.keys(cells).map(Number);if(!ys.length)throw new Error(`${name}: No valid SLK cells found.`);
- const maxCol=Math.max(1,...Object.values(cells).map(row=>Math.max(0,...Object.keys(row).map(Number))));
- const maxRow=Math.max(...ys);
- const headers=Array.from({length:maxCol},(_,i)=>cells[1]?.[i+1]??`Column ${i+1}`);
- const types=Array.from({length:maxCol},(_,i)=>cells[2]?.[i+1]??'string');
- const records=[];
- for(let y=1;y<=maxRow;y++){
-  records.push(Array.from({length:maxCol},(_,i)=>cells[y]?.[i+1]??(y===1?headers[i]:y===2?types[i]:'')));
+/* ---------- SLK byte decoding + tolerant SYLK parser ---------- */
+function detectLegacySlkEncoding(bytes){
+ // Western encodings usually have isolated accented bytes, while CP949 text
+ // is predominantly made of adjacent two-byte sequences.
+ let pairedHigh=0,singleHigh=0;
+ for(let i=0;i<bytes.length;i++){
+  if(bytes[i]<0x80)continue;
+  if(i+1<bytes.length&&bytes[i+1]>=0x80){pairedHigh++;i++;}
+  else singleHigh++;
  }
- while(records.length>2&&!records[records.length-1].some(v=>String(v).trim()))records.pop();
- const doc={id:makeId(),filename:basename(name),exportName:basename(name),encoding:decoded.encoding,newline,idLine,endLine,headers,types,records,rowCount:records.length,columnCount:maxCol};
- syncMetaFromRecords(doc);
- return doc;
+ try{
+  const korean=window.PochitaCP949?.decode
+   ? window.PochitaCP949.decode(bytes)
+   : new TextDecoder('euc-kr',{fatal:true}).decode(bytes);
+  if(/[\uAC00-\uD7A3\u1100-\u11FF\u3130-\u318F]/.test(korean))return 'cp949';
+  // A single high-byte pair can occur in Western words such as “Größe”.
+  // Require multiple pairs before treating non-Hangul legacy text as CP949.
+  if(pairedHigh>=2&&pairedHigh>singleHigh)return 'cp949';
+ }catch(_){/* Fall through to the Western decoder. */}
+ return 'windows-1252';
+}
+function decodeSlkBytes(raw){
+ const bytes=raw instanceof Uint8Array?raw:new Uint8Array(raw||0);
+ if(!bytes.length)return {text:'',encoding:'utf-8'};
+ let encoding='';let offset=0;
+ // BOMs are authoritative and are removed before decoding.
+ if(bytes.length>=3&&bytes[0]===0xEF&&bytes[1]===0xBB&&bytes[2]===0xBF){encoding='utf-8-sig';offset=3;}
+ else if(bytes.length>=2&&bytes[0]===0xFF&&bytes[1]===0xFE){encoding='utf-16le';offset=2;}
+ else if(bytes.length>=2&&bytes[0]===0xFE&&bytes[1]===0xFF){encoding='utf-16be';offset=2;}
+ else{
+  // Detect BOM-less UTF-16 from the alternating NUL-byte pattern typical of
+  // ASCII-heavy SYLK records (ID;P..., C;X..., etc.).
+  const n=Math.min(bytes.length,256);let evenZero=0,oddZero=0;
+  for(let i=0;i<n;i++)if(bytes[i]===0){if(i&1)oddZero++;else evenZero++;}
+  if(n>=4&&oddZero>=2&&oddZero>n*0.18&&oddZero>evenZero*3)encoding='utf-16le';
+  else if(n>=4&&evenZero>=2&&evenZero>n*0.18&&evenZero>oddZero*3)encoding='utf-16be';
+  else{
+   try{new TextDecoder('utf-8',{fatal:true}).decode(bytes);encoding='utf-8';}
+   catch(_){encoding=detectLegacySlkEncoding(bytes);}
+  }
+ }
+ const payload=bytes.subarray(offset);
+ let text;
+ try{
+  if(encoding==='cp949')text=window.PochitaCP949?.decode?window.PochitaCP949.decode(payload):new TextDecoder('euc-kr').decode(payload);
+  else text=new TextDecoder(encoding==='utf-8-sig'?'utf-8':encoding).decode(payload);
+ }catch(error){
+  if(encoding==='cp949'){
+   // A malformed/ambiguous CP949 stream is still recoverable as Western text.
+   encoding='windows-1252';text=new TextDecoder('windows-1252').decode(payload);
+  }else throw new Error(`Could not decode SLK file as ${encoding}: ${error.message}`);
+ }
+ return {text:text.replace(/^\uFEFF/,''),encoding};
+}
+function splitSylkTokens(line){
+ const tokens=[];let current='',quoted=false;
+ for(let i=0;i<line.length;i++){
+  const ch=line[i],next=line[i+1];
+  if(ch==='"'){
+   if(quoted&&next==='"'){current+='"';i++;}
+   else{quoted=!quoted;current+=ch;}
+  }else if(ch===';'&&next===';'){
+   // SYLK escapes a literal semicolon by doubling it.
+   current+=';';i++;
+  }else if(ch===';'&&!quoted){tokens.push(current);current='';}
+  else current+=ch;
+ }
+ tokens.push(current);return tokens;
+}
+function parseSylkValue(raw){
+ const value=String(raw??'').trim();
+ return value.length>=2&&value[0]==='"'&&value[value.length-1]==='"'
+  ? value.slice(1,-1).replace(/""/g,'"') : value;
+}
+function parseTsvFallback(text){
+ const lines=text.replace(/\r\n/g,'\n').replace(/\r/g,'\n').split('\n').filter(line=>line.length>0);
+ if(!lines.length)throw new Error('The selected file is empty.');
+ const records=lines.map(line=>line.split('\t'));
+ const width=Math.max(1,...records.map(row=>row.length));
+ records.forEach(row=>{while(row.length<width)row.push('');});
+ if(records.length===1)records.push(Array(width).fill('string'));
+ return records;
+}
+function parseSlk(name,raw){
+ const decoded=decodeSlkBytes(raw),text=decoded.text,newline=text.includes('\r\n')?'\r\n':(text.includes('\r')?'\r':'\n');
+ const lines=text.replace(/\r\n/g,'\n').replace(/\r/g,'\n').split('\n');
+ const idLine=lines.find(line=>line.trimStart().startsWith('ID;'))||'ID;PCALCOOO32';
+ const endLine=[...lines].reverse().find(line=>line.trim()==='E')||'E';
+ const cells=new Map();let currentX=1,currentY=1,maxRow=0,maxCol=0,cellCount=0;
+ for(const rawLine of lines){
+  if(!rawLine.trim())continue;
+  const tokens=splitSylkTokens(rawLine.trimStart());
+  const recordType=String(tokens[0]||'').trim().toUpperCase();
+  if(recordType==='E')break;
+  if(recordType==='B')continue; // Bounds are advisory; only populated cells size the grid.
+  if(recordType!=='C')continue;
+  let hasValue=false,value='';
+  // X and Y are sticky in SYLK. Keep the previous coordinate when a record
+  // omits it, and accept either X/Y token order.
+  for(let i=1;i<tokens.length;i++){
+   const token=tokens[i];if(!token)continue;
+   const coord=/^([XY])(\d+)$/i.exec(token.trim());
+   if(coord){
+    const n=Number(coord[2]);
+    if(Number.isSafeInteger(n)&&n>=1){if(coord[1].toUpperCase()==='X')currentX=n;else currentY=n;}
+   }else if(token[0].toUpperCase()==='K'){
+    hasValue=true;value=parseSylkValue(token.slice(1));
+   }
+  }
+  if(!hasValue||currentX<1||currentY<1)continue;
+  let row=cells.get(currentY);if(!row){row=new Map();cells.set(currentY,row);}
+  row.set(currentX,value);cellCount++;
+  maxRow=Math.max(maxRow,currentY);maxCol=Math.max(maxCol,currentX);
+ }
+ let records=[];
+ if(cellCount){
+  // Row 1 (headers) and Row 2 (types) are always present in the editor model.
+  const rowCount=Math.max(2,maxRow),width=Math.max(1,maxCol);
+  records=Array.from({length:rowCount},(_,r)=>Array.from({length:width},(_,c)=>cells.get(r+1)?.get(c+1)??(r===1?'string':'')));
+  while(records.length>2&&!records[records.length-1].some(v=>String(v).trim()))records.pop();
+ }else if(text.includes('\t'))records=parseTsvFallback(text);
+ else throw new Error(`${name}: No valid SYLK cells found. The file may be damaged or use an unsupported format.`);
+ const headers=Array.from({length:Math.max(1,...records.map(r=>r.length))},(_,i)=>String(records[0]?.[i]??`Column ${i+1}`));
+ const types=Array.from({length:headers.length},(_,i)=>String(records[1]?.[i]??'string'));
+ const doc={id:makeId(),filename:basename(name),exportName:basename(name),encoding:decoded.encoding,newline,idLine,endLine,headers,types,records,rowCount:records.length,columnCount:headers.length};
+ syncMetaFromRecords(doc);return doc;
 }
 
 function quoteSlk(value){return '"'+String(value??'').replace(/"/g,'""')+'"';}
@@ -340,10 +437,31 @@ function numericSlk(value,kind,rowNo,colNo){
  if(String(kind).toLowerCase()==='int')return String(Math.trunc(number));
  return String(Number(number.toPrecision(12)));
 }
+function encodeWindows1252(text){
+ const special=[0x20AC,0x0081,0x201A,0x0192,0x201E,0x2026,0x2020,0x2021,0x02C6,0x2030,0x0160,0x2039,0x0152,0x008D,0x017D,0x008F,0x0090,0x2018,0x2019,0x201C,0x201D,0x2022,0x2013,0x2014,0x02DC,0x2122,0x0161,0x203A,0x0153,0x009D,0x017E,0x0178];
+ const reverse=new Map(special.map((cp,i)=>[cp,0x80+i]));const out=[];
+ for(const ch of String(text)){
+  const cp=ch.codePointAt(0);
+  if(cp<=0x7F||(cp>=0xA0&&cp<=0xFF))out.push(cp);
+  else if(reverse.has(cp))out.push(reverse.get(cp));
+  else throw new Error(`Character ${JSON.stringify(ch)} cannot be represented in Windows-1252. Export cancelled to avoid damaging the file.`);
+ }
+ return Uint8Array.from(out);
+}
+function encodeUtf16(text,littleEndian=true){
+ const out=new Uint8Array(2+String(text).length*2);out[0]=littleEndian?0xFF:0xFE;out[1]=littleEndian?0xFE:0xFF;
+ const view=new DataView(out.buffer);
+ for(let i=0;i<String(text).length;i++)view.setUint16(2+i*2,String(text).charCodeAt(i),littleEndian);
+ return out;
+}
 function encodeSlkText(text,encoding){
- if(encoding==='utf-8-sig'){const body=new TextEncoder().encode(text),out=new Uint8Array(body.length+3);out.set([0xEF,0xBB,0xBF]);out.set(body,3);return out;}
- if(encoding==='utf-8')return new TextEncoder().encode(text);
- if(encoding==='cp949')return PochitaCP949.encode(text);
+ const enc=String(encoding||'utf-8').toLowerCase();
+ if(enc==='utf-8-sig'){const body=new TextEncoder().encode(text),out=new Uint8Array(body.length+3);out.set([0xEF,0xBB,0xBF]);out.set(body,3);return out;}
+ if(enc==='utf-8')return new TextEncoder().encode(text);
+ if(enc==='utf-16'||enc==='utf-16le')return encodeUtf16(text,true);
+ if(enc==='utf-16be')return encodeUtf16(text,false);
+ if(enc==='cp949')return window.PochitaCP949.encode(text);
+ if(enc==='windows-1252'||enc==='windows1252'||enc==='cp1252')return encodeWindows1252(text);
  throw new Error(`Unsupported source encoding “${encoding}”. Export cancelled to avoid damaging the file.`);
 }
 function serializeDoc(doc){
@@ -1352,7 +1470,7 @@ function updateTitle(){
  const d=activeDoc();
  $('#docTitleName').textContent=d?`${baseNoExt(d.exportName||d.filename)} · ${labelForKind(kindOf(d))}${isRoot(d)?' (Root)':''}`:'No file loaded';
  $('#docTitleDirty').hidden=!(d&&dirty.has(d.id));
- document.title=d?`${baseNoExt(d.exportName||d.filename)}${dirty.has(d.id)?' •':''} — Pochita SLK Editor`:'Pochita SLK Editor v1.4.0';
+ document.title=d?`${baseNoExt(d.exportName||d.filename)}${dirty.has(d.id)?' •':''} — Pochita SLK Editor`:'Pochita SLK Editor v1.4.1';
 }
 function updateStatusRight(){
  const d=activeDoc();
@@ -1593,33 +1711,53 @@ function clearWorkspace(){
  updateStatus('Workspace cleared. Import your SLK files to continue.');toast('Workspace cleared. Your original files on disk were not changed.');
 }
 function localDate(){const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;}
-async function exportCurrent(){const d=activeDoc();if(!d)return;try{const bytes=serializeDoc(d);downloadBytes(bytes,d.exportName||d.filename);dirty.delete(d.id);renderAll();toast(`${d.exportName||d.filename} exported.`);}catch(e){toast(e.message,'error');}}
+async function exportCurrent(){const d=activeDoc();if(!d)return;try{const bytes=serializeDoc(d),name=safeSlkName(d.exportName||d.filename);downloadBytes(bytes,name);dirty.delete(d.id);renderAll();toast(`${name} exported.`);}catch(e){toast(e.message,'error');}}
 async function exportZip(){if(!docs.length)return;const date=localDate(),folder=`${date}_pochita_export`;try{
  if(typeof JSZip==='undefined')throw new Error('ZIP support could not load. Refresh the page and try again.');
  const zip=new JSZip(),inner=zip.folder(folder),used=new Set();
  for(const d of docs){let name=safeSlkName(d.exportName||d.filename),base=name,number=2;while(used.has(name.toLocaleLowerCase())){name=`${baseNoExt(base)}_${number++}.slk`;}used.add(name.toLocaleLowerCase());inner.file(name,serializeDoc(d));}
  const blob=await zip.generateAsync({type:'blob',compression:'DEFLATE',compressionOptions:{level:6}});downloadBytes(blob,`${folder}.zip`,'application/zip');dirty.clear();renderAll();toast(`ZIP downloaded: ${folder}.zip`);
  }catch(e){toast(e.message,'error');}}
-function safeSlkName(name){let safe=basename(String(name||'export.slk')).replace(/[\/]/g,'_').trim().replace(/^\.+|\.+$/g,'');if(!safe)safe='export.slk';if(!safe.toLowerCase().endsWith('.slk'))safe+='.slk';return safe;}
+function safeSlkName(name){let safe=basename(String(name||'export.slk')).replace(/[\/]/g,'_').trim().replace(/^\.+|\.+$/g,'');if(!safe)safe='export.slk';if(/\.txt$/i.test(safe))safe=safe.replace(/\.txt$/i,'.slk');else if(!safe.toLowerCase().endsWith('.slk'))safe+='.slk';return safe;}
 
+function uniqueImportedFilename(filename,reserved){
+ const original=basename(filename||'import.slk');
+ const dot=original.lastIndexOf('.'),base=dot>0?original.slice(0,dot):original,ext=dot>0?original.slice(dot):'.slk';
+ let candidate=original,number=1;
+ while(reserved.has(normalize(candidate))){candidate=`${base}_copy${number===1?'':`_${number}`}${ext}`;number++;}
+ reserved.add(normalize(candidate));return candidate;
+}
 async function importFiles(fileList){
- const files=[...fileList].filter(f=>f.name.toLowerCase().endsWith('.slk')||f.name.toLowerCase().endsWith('.txt'));
+ const files=[...(fileList||[])].filter(f=>f&&f.name&&(/\.(?:slk|txt)$/i).test(f.name));
  if(files.length)coverageDismissed=false;
- if(!files.length){toast('Choose one or more .slk files.','error');return;}
- try{updateStatus(`Reading ${files.length} file${files.length===1?'':'s'}…`);const addedDocs=[];
-  for(const f of files){
+ if(!files.length){toast('Choose one or more .slk files.','error');$('#filePicker').value='';return;}
+ updateStatus(`Reading ${files.length} file${files.length===1?'':'s'}…`);
+ const addedDocs=[],errors=[],reserved=new Set(docs.map(d=>normalize(d.filename)));
+ for(const f of files){
+  try{
    const d=parseSlk(f.name,new Uint8Array(await f.arrayBuffer()));
-   const existing=docs.find(x=>normalize(x.filename)===normalize(d.filename));
-   if(existing){d.filename=`${baseNoExt(d.filename)}_copy.slk`;d.exportName=d.filename;}
-   d.targetLevel='3';d.syncTarget=true;docs.push(d);addedDocs.push(d);
-   // Start selection at Row 3 (index 2 = first song row) if available, while Row 1 & 2 stay visible above
+   const uniqueName=uniqueImportedFilename(d.filename,reserved);
+   d.filename=uniqueName;d.exportName=uniqueName;d.targetLevel='3';d.syncTarget=true;
+   addedDocs.push(d);
+   // Start selection at Row 3 (index 2 = first song row) if available.
    const startRow=d.records.length>2?2:0;
    selById[d.id]={a:{p:startRow,c:0},f:{p:startRow,c:0},extra:[]};
-  }
-  if(!rootId&&docs.length){rootId=docs.reduce((a,b)=>b.records.length>a.records.length?b:a).id;docById(rootId).syncTarget=false;if(!activeId)activeId=rootId;}
-  if(addedDocs.length===1)activeId=addedDocs[0].id;else if(!activeId&&docs.length)activeId=rootId||docs[docs.length-1].id;
-  if(!viewIds.length)viewIds=docs.slice(0,3).map(d=>d.id);syncFieldKeys=defaultSyncFieldKeys();updateStatus('Files imported');viewStamp++;renderAll();focusGrid();toast(`${addedDocs.length} file${addedDocs.length===1?'':'s'} imported successfully (including Row 1 & 2).`);
- }catch(e){updateStatus('Import failed');toast(e.message,'error');}$('#filePicker').value='';
+  }catch(error){errors.push(`${f.name}: ${error?.message||String(error)}`);}
+ }
+ if(!addedDocs.length){
+  updateStatus('Import failed');toast(errors.slice(0,2).join(' · ')||'No valid files were imported.','error');
+  $('#filePicker').value='';return;
+ }
+ docs.push(...addedDocs);
+ if(!rootId&&docs.length){rootId=docs.reduce((a,b)=>b.records.length>a.records.length?b:a).id;docById(rootId).syncTarget=false;if(!activeId)activeId=rootId;}
+ if(addedDocs.length===1)activeId=addedDocs[0].id;else if(!activeId&&docs.length)activeId=rootId||docs[docs.length-1].id;
+ if(!viewIds.length)viewIds=docs.slice(0,3).map(d=>d.id);
+ syncFieldKeys=defaultSyncFieldKeys();
+ updateStatus(errors.length?`Imported ${addedDocs.length}; ${errors.length} file(s) could not be read.`:'Files imported');
+ viewStamp++;renderAll();focusGrid();
+ if(errors.length)toast(`${addedDocs.length} imported, ${errors.length} skipped. ${errors[0]}`,'error');
+ else toast(`${addedDocs.length} file${addedDocs.length===1?'':'s'} imported successfully (including Row 1 & 2).`);
+ $('#filePicker').value='';
 }
 function renderAll(){
  renderTabs();renderFiles();renderSplitChooser();renderSheets();renderCoverage();updateTitle();updateStatusRight();updateRibbonState();updateBars();
